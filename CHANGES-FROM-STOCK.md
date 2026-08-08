@@ -153,3 +153,15 @@ Compound — same content for every instance, ships in the base.
 ## No other changes
 
 No CRM logic, API routes, or other components have been modified.
+
+---
+
+# INSTANCE LAYER — chadjordan.studio (the Compound)
+
+## design-system/tokens.json (brand — keep instance side on upstream merge)
+- Rebranded the admin dashboard to the Compound: navy ground (`#0d1b2e`),
+  bone foreground (`#ede8dc`), gold accent (`#c9a96e`), gold-hairline borders;
+  Bricolage Grotesque / DM Sans / DM Mono. `brand.name` → "Chad Jordan · Studio",
+  `logoLetter` → "C". Same `dashboard.dark/light` key structure preserved so
+  `buildThemeCss()` is unaffected. Token pass only — status chips left semantic;
+  a handful of hardcoded neutrals in the prose-editor/article-preview remain.
