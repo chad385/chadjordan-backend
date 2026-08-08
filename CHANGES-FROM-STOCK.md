@@ -165,3 +165,15 @@ No CRM logic, API routes, or other components have been modified.
   `logoLetter` → "C". Same `dashboard.dark/light` key structure preserved so
   `buildThemeCss()` is unaffected. Token pass only — status chips left semantic;
   a handful of hardcoded neutrals in the prose-editor/article-preview remain.
+
+## Image Visual DNA (base upgrade — config-driven, generic)
+`src/app/api/write-article/route.ts` — the hero-image prompt builder now wraps
+every per-post subject with a brand **Visual DNA** read from `brand_context`
+(category `content`): `image_style` is PREPENDED (grade/palette/mood) and
+`image_avoid` is APPENDED as a negative list. Previously the style fell back to
+a hardcoded off-brand default and there was no config avoid list. The template
+default is now a neutral placeholder — each instance sets its own DNA in config,
+no code change (same discipline as design tokens). This instance's values are
+seeded in `brand_context` (see `content-corpus/content/image_style.md` +
+`image_avoid.md`): navy/near-black + single warm gold accent, low-key matte
+filmic. Mechanism generic; values per instance.

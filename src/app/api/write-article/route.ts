@@ -47,6 +47,7 @@ interface BrandContext {
   ctaLinks: string;
   authorName: string;
   imageStyle: string;
+  imageAvoid: string;
 }
 
 async function loadBrandContext(): Promise<BrandContext> {
@@ -71,11 +72,17 @@ async function loadBrandContext(): Promise<BrandContext> {
   const authorRow = rows.find((r) => r.category === "identity" && r.key === "author");
   const authorName = authorRow?.content?.trim() || "Content Agent";
 
-  // Extract image style from brand context (category: "content", key: "image_style")
+  // Image Visual DNA — config-driven so every generated image inherits the
+  // brand's grade/palette/mood regardless of subject (category: "content").
+  //   image_style  → the style DNA, prepended to every image prompt
+  //   image_avoid  → the negative/avoid list, appended to every image prompt
+  // Set these per instance in brand_context; the template ships neutral defaults.
   const imageRow = rows.find((r) => r.category === "content" && r.key === "image_style");
   const imageStyle = imageRow?.content?.trim() || "";
+  const avoidRow = rows.find((r) => r.category === "content" && r.key === "image_avoid");
+  const imageAvoid = avoidRow?.content?.trim() || "";
 
-  return { fullContext, ctaLinks, authorName, imageStyle };
+  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid };
 }
 
 // ─── Fetch existing articles for internal linking ────────────────────────────
@@ -138,28 +145,38 @@ async function generateHeroImage(
   keyword: string,
   slug: string,
   imageStyle?: string,
-  imageConcept?: string
+  imageConcept?: string,
+  imageAvoid?: string
 ): Promise<string | null> {
   if (!process.env.OPENAI_API_KEY) return null;
 
   try {
     const openai = new OpenAI();
 
-    // Default style if none configured in brand_context
-    const defaultStyle = `Epic cinematic concept art. Monumental scale, surreal, otherworldly.
-Vivid saturated color blooming out of deep darkness: volumetric god rays, glowing energy, luminous materials.
-Hyperdetailed painterly-photoreal hybrid. Never a product photo or flat still life.`;
+    // Placeholder Visual DNA — instances set their own in brand_context
+    // (content/image_style). Kept deliberately neutral so the template is
+    // brand-agnostic; the real grade/palette/mood comes from config.
+    const defaultStyle = `Clean, modern editorial photography. A single clear focal subject,
+uncluttered composition with negative space, natural directional light. Restrained and intentional.`;
 
+    // The style DNA is PREPENDED to every prompt so the grade/palette/mood is
+    // consistent no matter the subject — this is the CSG-PRO "Visual DNA" idea.
     const styleGuide = imageStyle || defaultStyle;
     const composition = COMPOSITIONS[hashString(slug) % COMPOSITIONS.length];
     const subject = imageConcept
       ? `Subject (build the whole frame around this): ${imageConcept}`
       : `Subject: one clear physical object or scene that works as a metaphor for the topic "${keyword}".`;
 
+    // The config avoid list is APPENDED after the universal (model-safety) rules.
+    const avoidLine = imageAvoid?.trim()
+      ? `\n- Avoid: ${imageAvoid.trim()}`
+      : "";
+
     const imagePrompt = `Create a hero image for a blog article titled "${title}" (topic: ${keyword}).
 
 ${subject}
 
+VISUAL DNA (apply this grade, palette, and mood to the whole frame):
 ${styleGuide}
 ${composition}
 
@@ -167,8 +184,7 @@ CRITICAL RULES:
 - ABSOLUTELY NO TEXT. No words, letters, numbers, logos, watermarks, or signatures
 - No documents, charts, screens, books or paper with visible writing — these render as garbled fake text
 - No close-up faces, no handshakes, no people pointing at screens; tiny silhouettes for scale are fine
-- No beige/bronze desk still lifes: no typewriters, chess boards, compasses, padlocks or statues on tables
-- Vivid and readable at thumbnail size: strong color against darkness, clear focal point`;
+- Readable at thumbnail size: clear focal point, strong tonal contrast${avoidLine}`;
 
     const isDalleModel = OPENAI_IMAGE_MODEL.startsWith("dall-e");
     const response = await openai.images.generate({
@@ -583,7 +599,8 @@ Return a JSON object with EXACTLY these fields:
       entry.target_keyword || articleData.semantic_tags?.[0] || "business technology",
       articleData.slug,
       brand.imageStyle,
-      articleData.image_concept
+      articleData.image_concept,
+      brand.imageAvoid
     );
 
     // 8. Save via Frontend API
