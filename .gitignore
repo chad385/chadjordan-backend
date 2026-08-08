@@ -1,0 +1,19 @@
+node_modules
+.next
+.env.local
+.env*.local
+.DS_Store
+.claude/
+.vercel/
+
+# typescript
+*.tsbuildinfo
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

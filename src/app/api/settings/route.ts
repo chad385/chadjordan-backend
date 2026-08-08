@@ -1,0 +1,112 @@
+/**
+ * GET/POST /api/settings — Read/write backend settings
+ *
+ * Uses a simple key-value approach in the backend_settings table.
+ * Primary use: storing publish_mode and automation config so
+ * backend routes can read them.
+ *
+ * If the backend_settings table doesn't exist yet, falls back to
+ * returning defaults. The table can be created with:
+ *
+ * CREATE TABLE backend_settings (
+ *   key TEXT PRIMARY KEY,
+ *   value JSONB NOT NULL,
+ *   updated_at TIMESTAMPTZ DEFAULT NOW()
+ * );
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { authenticateSession, unauthorizedResponse } from "@/lib/api/auth";
+import { createAdminClient } from "@/lib/supabase/server";
+
+
+const DEFAULTS: Record<string, unknown> = {
+  publish_mode: "safe",
+  trend_scan_config: {
+    domains: [
+      "content marketing",
+      "brand strategy",
+      "marketing automation",
+      "creator economy",
+      "AI tools for business",
+    ],
+    keyword_clusters: ["authority", "seo", "ai", "growth", "offers", "emerging"],
+    audience_description:
+      "Founders, consultants, and service businesses using content to build authority and attract clients.",
+    include_terms: ["2026", "strategy", "tool", "trend"],
+    exclude_terms: ["stocks", "sports", "celebrity", "politics"],
+    max_new_entries: 10,
+    max_headlines_per_domain: 5,
+    locale: "en-US",
+    country: "US",
+  },
+};
+
+export async function GET(request: NextRequest) {
+  const auth = await authenticateSession(request);
+  if (!auth.authenticated) return unauthorizedResponse(auth.error);
+
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from("backend_settings")
+    .select("key, value");
+
+  if (error) {
+    // Table might not exist yet — return defaults
+    return NextResponse.json({ settings: DEFAULTS });
+  }
+
+  const settings: Record<string, unknown> = { ...DEFAULTS };
+  for (const row of data || []) {
+    settings[row.key] = row.value;
+  }
+
+  return NextResponse.json({
+    settings,
+    digital_home_url: process.env.DIGITAL_HOME_URL || process.env.NEXT_PUBLIC_DIGITAL_HOME_URL || '',
+  });
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await authenticateSession(request);
+  if (!auth.authenticated) return unauthorizedResponse(auth.error);
+
+  const body = await request.json();
+  const { key, value } = body;
+
+  if (!key || value === undefined) {
+    return NextResponse.json(
+      { error: "key and value are required" },
+      { status: 400 }
+    );
+  }
+
+  const supabase = createAdminClient();
+
+  const { error } = await supabase
+    .from("backend_settings")
+    .upsert(
+      { key, value, updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
+
+  if (error) {
+    // Table might not exist — try to create it
+    if (error.code === "42P01") {
+      return NextResponse.json(
+        {
+          error:
+            "backend_settings table not found. Create it in Supabase: CREATE TABLE backend_settings (key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW());",
+        },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json(
+      { error: `Failed to save setting: ${error.message}` },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, key, value });
+}
