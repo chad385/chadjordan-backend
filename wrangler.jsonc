@@ -4,7 +4,7 @@
   // file header. Reverting to ".open-next/worker.js" disables the cron and
   // restores stock OpenNext behaviour.
   "main": "worker.ts",
-  "name": "digital-home-backend",
+  "name": "chadjordan-backend",
   // The CRM engine tick + social publish tick. Was a GitHub Action; GitHub
   // throttles scheduled workflows, which stalls onboarding email.
   "triggers": {
@@ -24,11 +24,11 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "digital-home-backend"
+      "service": "chadjordan-backend"
     },
     {
       "binding": "FRONTEND_WORKER",
-      "service": "digital-home-frontend"
+      "service": "chadjordan-frontend"
     }
   ],
   "images": {
@@ -49,12 +49,12 @@
   },
   // Non-secret env vars. Secrets (API keys) are set via `wrangler secret put`.
   "vars": {
-    "SUPABASE_URL": "https://tarbgdnnkwdwldeivwqi.supabase.co",
-    "SUPABASE_ANON_KEY": "sb_publishable_6zDb6zTQdAL_Aif5O25Fxg_Tc-tGpyH",
-    "NEXT_PUBLIC_SUPABASE_URL": "https://tarbgdnnkwdwldeivwqi.supabase.co",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_6zDb6zTQdAL_Aif5O25Fxg_Tc-tGpyH",
-    "DIGITAL_HOME_URL": "https://digital-home-frontend.chad-1a0.workers.dev",
-    "NEXT_PUBLIC_DIGITAL_HOME_URL": "https://digital-home-frontend.chad-1a0.workers.dev",
+    "SUPABASE_URL": "https://unlmfpqxjuxdqqifxvxm.supabase.co",
+    "SUPABASE_ANON_KEY": "sb_publishable_28zqFB6-_3UnbwwRUJwCEQ_pBmzYDhw",
+    "NEXT_PUBLIC_SUPABASE_URL": "https://unlmfpqxjuxdqqifxvxm.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_28zqFB6-_3UnbwwRUJwCEQ_pBmzYDhw",
+    "DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
+    "NEXT_PUBLIC_DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
     "R2_PUBLIC_BASE": "https://media.yourdomain.com"
   }
 }
