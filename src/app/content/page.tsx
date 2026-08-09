@@ -274,6 +274,8 @@ function BoardView({ digitalHomeUrl }: { digitalHomeUrl: string }) {
   const [writing, setWriting] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState('');
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
@@ -388,6 +390,43 @@ function BoardView({ digitalHomeUrl }: { digitalHomeUrl: string }) {
     } finally { setWriting(null); }
   };
 
+  // Remove a suggested topic (deletes the calendar row; article, if any, stays)
+  const deleteEntry = async (id: string) => {
+    if (!confirm('Remove this suggestion? This cannot be undone.')) return;
+    setEntries((prev) => prev.filter((e) => e.id !== id)); // optimistic
+    const res = await fetch(`/api/content-calendar/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (!res.ok) fetchEntries(); // revert on failure
+  };
+
+  // Manually trigger the trend scan (same endpoint the weekly workflow calls)
+  const runTrendScan = async () => {
+    setScanning(true);
+    setScanMsg('');
+    try {
+      const res = await fetch('/api/trend-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setScanMsg(data.error || 'Scan failed');
+      } else {
+        const added = data.added ?? data.inserted ?? data.count ?? data.new_entries;
+        setScanMsg(added != null ? `Added ${added} new ${added === 1 ? 'idea' : 'ideas'}` : 'Scan complete');
+      }
+    } catch {
+      setScanMsg('Scan failed');
+    } finally {
+      setScanning(false);
+      fetchEntries();
+    }
+  };
+
   // ─── Drag handlers ───
   const activeEntry = entries.find((e) => e.id === activeId);
 
@@ -458,6 +497,18 @@ function BoardView({ digitalHomeUrl }: { digitalHomeUrl: string }) {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      {/* Toolbar — manually trigger a trend scan for new topic ideas */}
+      <div className="px-12 pb-4 flex items-center gap-4 shrink-0">
+        <button
+          onClick={runTrendScan}
+          disabled={scanning}
+          className="text-xs font-medium px-4 py-2 border rounded-lg border-minimal-border text-minimal-muted hover:text-white hover:border-minimal-muted transition-colors disabled:opacity-40"
+          title="Scan trends and add new topic ideas to Planned"
+        >
+          {scanning ? 'Scanning…' : 'Run trend scan'}
+        </button>
+        {scanMsg && <span className="text-xs text-minimal-muted">{scanMsg}</span>}
+      </div>
       <div className="flex-1 px-12 pb-6 overflow-x-auto flex gap-6">
         {BOARD_COLUMNS.map((status) => (
           <DroppableColumn
@@ -484,6 +535,7 @@ function BoardView({ digitalHomeUrl }: { digitalHomeUrl: string }) {
                   onWriteNow={() => writeNow(entry.id)}
                   onPublish={() => publishEntry(entry.id)}
                   onReset={() => resetStuck(entry.id)}
+                  onDelete={() => deleteEntry(entry.id)}
                   digitalHomeUrl={digitalHomeUrl}
                 />
               ))
@@ -557,6 +609,7 @@ function DraggableCard({
   onWriteNow,
   onPublish,
   onReset,
+  onDelete,
   digitalHomeUrl,
 }: {
   entry: CalendarEntry;
@@ -567,6 +620,7 @@ function DraggableCard({
   onWriteNow: () => void;
   onPublish: () => void;
   onReset: () => void;
+  onDelete: () => void;
   digitalHomeUrl: string;
 }) {
   const canDrag = (VALID_MOVES[entry.status] || []).length > 0 && entry.status !== 'writing';
@@ -713,6 +767,15 @@ function DraggableCard({
                 View →
               </a>
             </>
+          )}
+          {(entry.status === 'planned' || entry.status === 'approved' || entry.status === 'archived') && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="text-xs text-minimal-muted hover:text-red-400 transition-colors ml-auto"
+              title="Remove this suggestion"
+            >
+              Remove
+            </button>
           )}
         </div>
       )}

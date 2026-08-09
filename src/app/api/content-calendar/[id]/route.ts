@@ -87,3 +87,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   return NextResponse.json(data);
 }
+
+// Remove a calendar entry (e.g. a suggested/planned topic). Deletes only the
+// calendar row; any written content_object it points at is left intact.
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const auth = await authenticateSessionOrApiKey(request);
+  if (!auth.authenticated) return unauthorizedResponse(auth.error);
+
+  const { id } = await context.params;
+  const supabase = createAdminClient();
+
+  const { error } = await supabase.from("content_calendar").delete().eq("id", id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

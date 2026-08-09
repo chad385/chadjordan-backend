@@ -177,3 +177,13 @@ no code change (same discipline as design tokens). This instance's values are
 seeded in `brand_context` (see `content-corpus/content/image_style.md` +
 `image_avoid.md`): navy/near-black + single warm gold accent, low-key matte
 filmic. Mechanism generic; values per instance.
+
+## Content pipeline admin UX (base upgrade)
+`src/app/api/content-calendar/[id]/route.ts` — added `DELETE` to remove a
+calendar entry (suggested topic); leaves any written content_object intact.
+`src/app/content/page.tsx` — added a **"Run trend scan"** toolbar button
+(POSTs `/api/trend-scan` via session auth, refreshes the board) and a
+per-card **Remove** action for planned/approved/archived suggestions.
+Instance data: seeded `backend_settings.trend_scan_config` with on-brand
+domains/audience/terms so the scan proposes ownership/platform-risk topics
+instead of the generic `DEFAULT_CONFIG`.
