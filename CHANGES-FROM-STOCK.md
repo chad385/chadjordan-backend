@@ -187,3 +187,9 @@ per-card **Remove** action for planned/approved/archived suggestions.
 Instance data: seeded `backend_settings.trend_scan_config` with on-brand
 domains/audience/terms so the scan proposes ownership/platform-risk topics
 instead of the generic `DEFAULT_CONFIG`.
+
+## Social media host (instance)
+- Connected custom domain `media.chadjordan.studio` to the `social-media` R2
+  bucket (`wrangler r2 bucket domain add`) and set `R2_PUBLIC_BASE` to it in
+  `wrangler.jsonc` — Meta/Instagram ingest posted media by pulling that URL.
+  Account connection (Meta page token / OAuth) still pending.
