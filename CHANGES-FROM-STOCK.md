@@ -193,3 +193,11 @@ instead of the generic `DEFAULT_CONFIG`.
   bucket (`wrangler r2 bucket domain add`) and set `R2_PUBLIC_BASE` to it in
   `wrangler.jsonc` — Meta/Instagram ingest posted media by pulling that URL.
   Account connection (Meta page token / OAuth) still pending.
+
+## Image Doctrine — literal scenes (instance)
+`src/app/api/write-article/route.ts` — realigned the hero-image prompt to the
+brand Image Doctrine (literal, never conceptual): the `image_concept` schema
+prompt now asks for a literal real moment (figure / trace / environment, figure
+in profile eyes-down) instead of a "monumental, surreal SCENE… as a world", and
+the fallback subject line asks for a literal moment instead of a "metaphor".
+Pairs with the `content/image_style` + `image_avoid` brand_context values.

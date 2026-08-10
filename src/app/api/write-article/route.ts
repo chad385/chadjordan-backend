@@ -165,7 +165,7 @@ uncluttered composition with negative space, natural directional light. Restrain
     const composition = COMPOSITIONS[hashString(slug) % COMPOSITIONS.length];
     const subject = imageConcept
       ? `Subject (build the whole frame around this): ${imageConcept}`
-      : `Subject: one clear physical object or scene that works as a metaphor for the topic "${keyword}".`;
+      : `Subject: one literal moment from a real scene related to "${keyword}" — a single figure, a close trace of human presence, or a wider environment. A real place or object shown plainly, not a metaphor or symbol.`;
 
     // The config avoid list is APPENDED after the universal (model-safety) rules.
     const avoidLine = imageAvoid?.trim()
@@ -475,7 +475,7 @@ Return a JSON object with EXACTLY these fields:
   "semantic_tags": ["tag1", "tag2", "tag3"],
   "target_segments": ["segment1"],
   "content_type": "article",
-  "image_concept": "one sentence describing a monumental, surreal SCENE that embodies THIS article's core argument as a world (not an object on a table) — epic scale, a clear focal structure, room for dramatic light. Derive it from the argument, not the keyword. No text, no faces, no documents, charts or screens.",
+  "image_concept": "one sentence describing a LITERAL, real moment that mirrors this article's subject — one of: a single figure absorbed in an action (in profile, eyes down, never facing the camera), a close trace of human presence (worn objects, a lit doorway, a used desk), or a quiet wider environment. A real place shown plainly at one distance, lit by one or two practical light sources. NOT a metaphor, symbol, or epic/surreal/monumental concept, not a 'world'. No text, no faces to camera, no documents, charts or screens.",
   "faqs": [{"question": "Q1?", "answer": "A1"}, {"question": "Q2?", "answer": "A2"}],
   "seo": {
     "title": "SEO meta title under 60 chars",
