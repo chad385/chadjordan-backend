@@ -71,6 +71,13 @@ const PRIORITY_DOTS: Record<string, string> = {
 
 
 // Valid drag-and-drop transitions
+// The article writer prefixes calendar notes with "[HELD" when its editing pass
+// found unsupported client claims (or failed). Held drafts need an explicit
+// confirmation before they can be published.
+function holdNote(entry: { notes: string | null }): string | null {
+  return entry.notes?.startsWith('[HELD') ? entry.notes.split('\n\n')[0] : null;
+}
+
 const VALID_MOVES: Record<string, string[]> = {
   planned: ['approved', 'archived'],
   approved: ['planned', 'writing', 'archived'],
@@ -325,6 +332,12 @@ function BoardView({ digitalHomeUrl }: { digitalHomeUrl: string }) {
   };
 
   const publishEntry = async (id: string) => {
+    const held = entries.find((e) => e.id === id);
+    const note = held ? holdNote(held) : null;
+    if (note && !window.confirm(`This draft was held for review:\n\n${note}\n\nPublish anyway?`)) {
+      fetchEntries(); // put a dragged card back
+      return;
+    }
     setPublishing(id);
     // Optimistic: move to published immediately
     setEntries((prev) =>
@@ -654,6 +667,15 @@ function DraggableCard({
         <span className="absolute top-3 right-3 text-xs font-semibold text-green-500 bg-green-500/10 px-2 py-0.5 rounded-lg">
           New
         </span>
+      )}
+      {/* Held for review — the editing pass flagged unsupported client claims */}
+      {holdNote(entry) && (
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+          <p className="text-xs font-semibold text-red-400">Held: check before publishing</p>
+          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-red-300/80">
+            {holdNote(entry)!.replace(/^\[HELD:[^\]]*\]\n?/, '') || holdNote(entry)}
+          </p>
+        </div>
       )}
       {/* Title — clickable link to editor if article exists */}
       {entry.content_objects?.slug ? (

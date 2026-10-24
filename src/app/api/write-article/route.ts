@@ -48,6 +48,7 @@ interface BrandContext {
   authorName: string;
   imageStyle: string;
   imageAvoid: string;
+  imageCompositions: string[];
 }
 
 async function loadBrandContext(): Promise<BrandContext> {
@@ -81,8 +82,15 @@ async function loadBrandContext(): Promise<BrandContext> {
   const imageStyle = imageRow?.content?.trim() || "";
   const avoidRow = rows.find((r) => r.category === "content" && r.key === "image_avoid");
   const imageAvoid = avoidRow?.content?.trim() || "";
+  //   image_compositions → one composition per line (a leading "- " is
+  //   optional), rotated per article so consecutive images differ
+  const compositionsRow = rows.find((r) => r.category === "content" && r.key === "image_compositions");
+  const imageCompositions = (compositionsRow?.content || "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
+    .filter((line) => line && !line.startsWith("#"));
 
-  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid };
+  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid, imageCompositions };
 }
 
 // ─── Fetch existing articles for internal linking ────────────────────────────
@@ -123,13 +131,14 @@ function base64ToArrayBuffer(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-// Rotated deterministically per slug so consecutive articles never share a frame.
-const COMPOSITIONS = [
-  "Composition: vast wide establishing shot, monumental subject dwarfing the frame, atmospheric haze and god rays.",
-  "Composition: low-angle hero shot looking up at a towering subject against a dramatic sky or void.",
-  "Composition: aerial view over a surreal landscape, the subject glowing at its center.",
-  "Composition: interior of a colossal space (temple, vault, engine, cathedral of the idea), light pouring in.",
-  "Composition: a single luminous structure suspended or floating in darkness, energy radiating outward.",
+// Fallback compositions, used only when brand_context has no
+// content/image_compositions row. Kept neutral and literal so they never fight
+// an instance's Visual DNA. Rotated deterministically per slug so consecutive
+// articles never share a frame.
+const DEFAULT_COMPOSITIONS = [
+  "Composition: a single subject at a natural, human distance, eye level, with generous negative space.",
+  "Composition: a close detail of an object or surface that carries the story, shallow depth of field.",
+  "Composition: a quiet, wider view of a real room or place, with the subject clearly readable in the frame.",
 ];
 
 function hashString(value: string): number {
@@ -146,9 +155,10 @@ async function generateHeroImage(
   slug: string,
   imageStyle?: string,
   imageConcept?: string,
-  imageAvoid?: string
-): Promise<string | null> {
-  if (!process.env.OPENAI_API_KEY) return null;
+  imageAvoid?: string,
+  imageCompositions: string[] = []
+): Promise<{ url: string | null; error: string | null }> {
+  if (!process.env.OPENAI_API_KEY) return { url: null, error: "OPENAI_API_KEY not set" };
 
   try {
     const openai = new OpenAI();
@@ -162,7 +172,8 @@ uncluttered composition with negative space, natural directional light. Restrain
     // The style DNA is PREPENDED to every prompt so the grade/palette/mood is
     // consistent no matter the subject — this is the CSG-PRO "Visual DNA" idea.
     const styleGuide = imageStyle || defaultStyle;
-    const composition = COMPOSITIONS[hashString(slug) % COMPOSITIONS.length];
+    const compositions = imageCompositions.length > 0 ? imageCompositions : DEFAULT_COMPOSITIONS;
+    const composition = compositions[hashString(slug) % compositions.length];
     const subject = imageConcept
       ? `Subject (build the whole frame around this): ${imageConcept}`
       : `Subject: one literal moment from a real scene related to "${keyword}" — a single figure, a close trace of human presence, or a wider environment. A real place or object shown plainly, not a metaphor or symbol.`;
@@ -183,7 +194,7 @@ ${composition}
 CRITICAL RULES:
 - ABSOLUTELY NO TEXT. No words, letters, numbers, logos, watermarks, or signatures
 - No documents, charts, screens, books or paper with visible writing — these render as garbled fake text
-- No close-up faces, no handshakes, no people pointing at screens; tiny silhouettes for scale are fine
+- No faces turned toward the camera, no handshakes, no people pointing at screens
 - Readable at thumbnail size: clear focal point, strong tonal contrast${avoidLine}`;
 
     const isDalleModel = OPENAI_IMAGE_MODEL.startsWith("dall-e");
@@ -205,13 +216,15 @@ CRITICAL RULES:
       imageBuffer = base64ToArrayBuffer(generated.b64_json);
     } else if (generated?.url) {
       const imageRes = await fetch(generated.url);
-      if (!imageRes.ok) return null;
+      if (!imageRes.ok) return { url: null, error: `Image download failed: HTTP ${imageRes.status}` };
       imageBuffer = await imageRes.arrayBuffer();
     }
-    if (!imageBuffer) return null;
+    if (!imageBuffer) return { url: null, error: "Image API returned no image data" };
 
     const supabase = createAdminClient();
-    const fileName = `blog/${slug}-hero.png`;
+    // Unique suffix so a new article's image can never overwrite an existing
+    // article's hero — slugs can collide and get deduped after the image is made.
+    const fileName = `blog/${slug}-${crypto.randomUUID().slice(0, 8)}-hero.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("images")
@@ -222,7 +235,7 @@ CRITICAL RULES:
 
     if (uploadError) {
       console.error("Image upload failed:", uploadError.message);
-      return null;
+      return { url: null, error: `Image upload failed: ${uploadError.message}` };
     }
 
     // Get the public URL
@@ -230,10 +243,10 @@ CRITICAL RULES:
       .from("images")
       .getPublicUrl(fileName);
 
-    return publicUrl.publicUrl;
+    return { url: publicUrl.publicUrl, error: null };
   } catch (err) {
     console.error("Hero image generation failed:", err);
-    return null;
+    return { url: null, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -303,6 +316,142 @@ function repairJsonQuotes(text: string): string {
   }
 
   return result.join("");
+}
+
+/** Parse a JSON object out of a model response (bare, fenced, or embedded). */
+function parseModelJson<T>(responseText: string): T {
+  // Control chars (incl. literal newlines) break JSON strings; unescaped quotes
+  // inside HTML attributes are repaired before any parse attempt.
+  const sanitized = repairJsonQuotes(responseText.replace(/[\x00-\x1F\x7F]/g, " "));
+
+  try {
+    return JSON.parse(sanitized.trim()) as T;
+  } catch {
+    // fall through
+  }
+
+  const fenceMatch = sanitized.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (fenceMatch) {
+    try {
+      return JSON.parse(fenceMatch[1]) as T;
+    } catch {
+      // fall through
+    }
+  }
+
+  const startIdx = sanitized.indexOf("{");
+  if (startIdx === -1) throw new Error("No JSON found in response");
+  let depth = 0;
+  let endIdx = -1;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = startIdx; i < sanitized.length; i++) {
+    const char = sanitized[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (char === "\\") { escapeNext = true; continue; }
+    if (char === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (char === "{") depth++;
+    if (char === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+  }
+  if (endIdx === -1) throw new Error("No complete JSON object found in response");
+  return JSON.parse(sanitized.slice(startIdx, endIdx + 1)) as T;
+}
+
+// ─── Editing pass ────────────────────────────────────────────────────────────
+
+interface ReviewFlag {
+  sentence: string;
+  reason: string;
+}
+
+interface EditResult {
+  body: string;
+  excerpt: string;
+  contrastFound: number;
+  contrastKept: number;
+  unsupportedClaims: ReviewFlag[];
+  editorError: string | null;
+}
+
+/**
+ * A second model pass over the draft. Two jobs:
+ * 1. Style: cut the "it isn't X, it's Y" reflex down to one, and drop stock
+ *    one-liner section closers. Meaning, facts, headings, links and FAQs stay.
+ * 2. Client claims: check every statement about a named client against the
+ *    brand context's proof section. Unsupported claims are a hard stop — they
+ *    are FLAGGED, never silently fixed, so a human sees what was invented.
+ * If this pass fails, the caller treats the draft as held for review.
+ */
+async function editDraft(
+  anthropic: Anthropic,
+  brand: BrandContext,
+  draft: { title: string; body: string; excerpt: string }
+): Promise<EditResult> {
+  const system = `You are the editor for a brand's articles. You receive a draft and the brand context. You do two separate jobs and return JSON.
+
+${brand.fullContext}
+
+JOB 1 — STYLE EDIT (apply these to the body):
+- Find every sentence, or pair of sentences, that sets something up only to deny it: "It isn't A, it's B." / "The fix isn't A. It's B." / "Not because A. Because B." / "A is not B — it's C." / "requires B, not A." / "not what X, but what Y". Count them. Keep at most ONE (the strongest). Rewrite every other one as a direct statement of B.
+- Remove stock closers: a section or paragraph that ends on a quotable one-liner, a three-beat fragment ("Nothing X. Nothing Y. Just Z."), or a symptom/disease metaphor. End on the last useful sentence instead.
+- Do not change meaning, facts, headings, links, HTML structure, or the FAQ section's questions. Do not add any new claims, examples, or numbers. Keep length roughly the same.
+
+JOB 2 — CLIENT-CLAIM CHECK (do NOT fix these):
+- List every statement about a named client, person, or project (deliverables, process, order of work, timeline, outcomes, quotes, attributions).
+- Check each against the PROOF section of the brand context (proof/case-studies and proof/testimonials). A claim is supported only if the proof section states it.
+- For each unsupported claim: copy the sentence exactly into "unsupported_claims" and say what isn't supported. LEAVE THAT SENTENCE UNCHANGED in the body so a human reviewer can see it. Do not soften, delete, or rewrite it.
+
+Return ONLY a JSON object, no commentary:
+{"body": "the edited HTML body", "excerpt": "the excerpt, edited by the same style rules", "contrast_found": 0, "contrast_kept": 0, "unsupported_claims": [{"sentence": "...", "reason": "..."}]}
+In "body", escape double quotes inside HTML attributes as \\" so the JSON stays valid.`;
+
+  const user = `Title: ${draft.title}
+
+Excerpt: ${draft.excerpt}
+
+Body (HTML):
+${draft.body}`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 16384,
+      system,
+      messages: [{ role: "user", content: user }],
+    });
+    const text = message.content[0].type === "text" ? message.content[0].text : "";
+    const out = parseModelJson<{
+      body?: string;
+      excerpt?: string;
+      contrast_found?: number;
+      contrast_kept?: number;
+      unsupported_claims?: ReviewFlag[];
+    }>(text);
+    if (!out.body || out.body.length < draft.body.length * 0.5) {
+      throw new Error("Editor returned an empty or truncated body");
+    }
+    return {
+      body: out.body,
+      excerpt: out.excerpt || draft.excerpt,
+      contrastFound: Number(out.contrast_found) || 0,
+      contrastKept: Number(out.contrast_kept) || 0,
+      unsupportedClaims: Array.isArray(out.unsupported_claims)
+        ? out.unsupported_claims.filter((c) => c && c.sentence)
+        : [],
+      editorError: null,
+    };
+  } catch (err) {
+    console.error("Editing pass failed:", err);
+    return {
+      body: draft.body,
+      excerpt: draft.excerpt,
+      contrastFound: 0,
+      contrastKept: 0,
+      unsupportedClaims: [],
+      editorError: err instanceof Error ? err.message : "unknown error",
+    };
+  }
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
@@ -420,10 +569,11 @@ IMPORTANT RULES:
 - Write in the brand voice defined above. Follow the voice guide, tone examples, and banned phrases strictly.
 - Match the tone and style in the tone examples — study them carefully. They define how the brand actually sounds.
 - Reading level: 9th grade. Short sentences. Plain words. No jargon.
-- Article length: MINIMUM 2,000 words, target 2,500-3,500 words. This is non-negotiable. Short articles get rejected.
-- Depth over breadth: this publishes a few times a week, not daily — every article must earn its slot. Ground every major claim in something concrete: a named example, a number, a step the reader can take today, or a real case from the brand context. If a section could appear on any competitor's blog unchanged, rewrite it with the brand's specific frameworks and stories.
+- Article length: 900-1,400 words. Make one point well and stop when it's made. Never pad to reach a length; padding is where filler lines and invented details come from.
+- Ground every major claim in something concrete: a real case from the brand context, a number you can stand behind, or a step the reader can take today. If a section could appear on any competitor's blog unchanged, rewrite it with the brand's specific frameworks.
+- CLIENT FACTS ARE FIXED: about any named client, person, or project, state only what the brand context's proof section says — deliverables, process, timeline, outcomes, quotes, and who said what. Never invent, infer, or embellish a client detail. If a detail you want isn't in the proof section, leave it out.
 - Every paragraph should be a dense, contextually complete semantic unit. Prefer paragraph-based exposition over bullet points.
-- Do NOT include the article title as an H1 or H2 at the start of the body — the website renders the title separately above the article. Start the body directly with the hook paragraph.
+- Do NOT include the article title as an H1 or H2 at the start of the body — the website renders the title separately above the article. Start the body directly with the opening paragraph.
 - Use HTML formatting: <h2>, <h3>, <p>, <blockquote>, <ul>, <li>, <strong>, <em>, <a> tags
 ${ctaInstruction}
 - Output ONLY valid JSON — no markdown code fences, no commentary
@@ -431,7 +581,7 @@ ${ctaInstruction}
 - Do NOT include any text before or after the JSON object`;
 
     const pillarDirective = entry.pillar_topic
-      ? `\nContent pillar: ${entry.pillar_topic} — this article ARGUES this pillar. Anchor it in that pillar's framework and signature story from the brand context (see "Content pillars" there). A reader who follows the brand's other channels should recognize the same argument in written form.`
+      ? `\nContent pillar: ${entry.pillar_topic} — this article argues this pillar, using that pillar's framework from the brand context (see "Content pillars" there). Use the pillar's signature story only where it genuinely fits, and only with the facts the brand context gives.`
       : "";
 
     const userPrompt = `Write a full article for this topic:
@@ -443,13 +593,12 @@ Intent type: ${entry.intent_type || "informational"}
 Priority: ${entry.priority || "medium"}${pillarDirective}
 
 Follow this structure:
-1. Hook — provocative statement, vivid anecdote, or counterintuitive claim
-2. Problem — name the specific pain the audience feels
-3. Failed solutions — why what they've tried hasn't worked
-4. The reframe — shift their perspective on the real problem
-5. The framework/solution — present the systematic approach
-6. Proof — reference relevant case studies or testimonials from the brand context
-7. CTA — tie to one of the brand's offers (matched by topic relevance)
+1. Opening — a concrete situation the reader will recognize, stated plainly
+2. The problem — what it is and what it costs them
+3. Why the usual fixes fall short
+4. What works — the approach, explained step by step
+5. Proof — only if a case in the brand context genuinely fits, using only the facts given there
+6. CTA — tie to one of the brand's offers (matched by topic relevance)
 
 SEO requirements:
 - Integrate target keyword 3-5 times naturally
@@ -458,7 +607,7 @@ SEO requirements:
 - Include 2-3 internal links to existing articles where relevant, using the exact canonical paths from the list above (e.g. <a href="/blog/slug">text</a>)
 
 FAQ section:
-- After the CTA, add an FAQ section with 4-6 questions and answers
+- After the CTA, add an FAQ section with 3-4 questions and answers
 - Questions should be ones a reader would naturally ask after reading the article
 - Answers should be 2-3 sentences each, direct and helpful
 - Include the target keyword naturally in at least 2 FAQ answers
@@ -521,64 +670,7 @@ Return a JSON object with EXACTLY these fields:
     };
 
     try {
-      // Step 1: Sanitize control characters that break JSON.parse
-      // Replace ALL control chars (including newlines/tabs) with a space —
-      // literal newlines inside JSON string values are invalid and cause parse errors
-      const sanitizedCtrl = responseText.replace(/[\x00-\x1F\x7F]/g, " ");
-
-      // Step 2: Repair unescaped double quotes inside string values
-      // Claude sometimes outputs <a href="url"> inside JSON strings without
-      // escaping the quotes — this fixes them before any parse attempt
-      const sanitized = repairJsonQuotes(sanitizedCtrl);
-
-      // Strategy 1: Try parsing the full response as JSON directly
-      let parsed = false;
-      try {
-        articleData = JSON.parse(sanitized.trim());
-        parsed = true;
-      } catch {
-        // Not pure JSON, try extraction
-      }
-
-      // Strategy 2: Extract JSON from markdown code fences
-      if (!parsed) {
-        const fenceMatch = sanitized.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-        if (fenceMatch) {
-          try {
-            articleData = JSON.parse(fenceMatch[1]);
-            parsed = true;
-          } catch {
-            // Fenced JSON also invalid
-          }
-        }
-      }
-
-      // Strategy 3: Find the outermost JSON object by bracket matching
-      if (!parsed) {
-        const startIdx = sanitized.indexOf("{");
-        if (startIdx === -1) throw new Error("No JSON found in response");
-
-        let depth = 0;
-        let endIdx = -1;
-        let inString = false;
-        let escapeNext = false;
-
-        for (let i = startIdx; i < sanitized.length; i++) {
-          const char = sanitized[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (char === "\\") { escapeNext = true; continue; }
-          if (char === '"') { inString = !inString; continue; }
-          if (inString) continue;
-          if (char === "{") depth++;
-          if (char === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
-        }
-
-        if (endIdx === -1) throw new Error("No complete JSON object found in response");
-        articleData = JSON.parse(sanitized.slice(startIdx, endIdx + 1));
-        parsed = true;
-      }
-
-      if (!parsed) throw new Error("Could not parse JSON from AI response");
+      articleData = parseModelJson<typeof articleData>(responseText);
     } catch (parseError: unknown) {
       // Revert status
       await supabase
@@ -593,14 +685,35 @@ Return a JSON object with EXACTLY these fields:
       );
     }
 
+    // 6b. Editing pass — style cleanup + client-claim check. Any unsupported
+    // client claim (or a failed editor) holds the article as a draft, whatever
+    // the publish mode, with the flags recorded for the reviewer.
+    const edit = await editDraft(anthropic, brand, {
+      title: articleData.title,
+      body: articleData.body,
+      excerpt: articleData.excerpt,
+    });
+    articleData.body = edit.body;
+    articleData.excerpt = edit.excerpt;
+    const held = edit.unsupportedClaims.length > 0 || Boolean(edit.editorError);
+    const finalStatus = held ? "draft" : targetStatus;
+    const holdNote = edit.editorError
+      ? `[HELD: editing pass failed (${edit.editorError}) — review before publishing]`
+      : edit.unsupportedClaims.length > 0
+        ? `[HELD: unsupported client claims — do not publish until checked]\n${edit.unsupportedClaims
+            .map((c) => `• "${c.sentence}" — ${c.reason}`)
+            .join("\n")}`
+        : null;
+
     // 7. Generate hero image (non-blocking — article still saves if this fails)
-    const heroImageUrl = await generateHeroImage(
+    const { url: heroImageUrl, error: heroImageError } = await generateHeroImage(
       articleData.title,
       entry.target_keyword || articleData.semantic_tags?.[0] || "business technology",
       articleData.slug,
       brand.imageStyle,
       articleData.image_concept,
-      brand.imageAvoid
+      brand.imageAvoid,
+      brand.imageCompositions
     );
 
     // 8. Save via Frontend API
@@ -615,7 +728,7 @@ Return a JSON object with EXACTLY these fields:
       semantic_tags: articleData.semantic_tags || [],
       target_segments: articleData.target_segments || [],
       featured_image_url: heroImageUrl,
-      status: targetStatus,
+      status: finalStatus,
       created_by: "content_agent",
       author_name: brand.authorName,
       seo: {
@@ -685,8 +798,9 @@ Return a JSON object with EXACTLY these fields:
     await supabase
       .from("content_calendar")
       .update({
-        status: targetStatus,
+        status: finalStatus,
         content_object_id: articleResult?.id || null,
+        ...(holdNote ? { notes: [holdNote, entry.notes].filter(Boolean).join("\n\n") } : {}),
       })
       .eq("id", calendar_entry_id);
 
@@ -715,6 +829,12 @@ Return a JSON object with EXACTLY these fields:
           word_count: articleData.body.split(/\s+/).length,
           publishing_mode: publishMode,
           calendar_id: calendar_entry_id,
+          held_for_review: held,
+          unsupported_claims: edit.unsupportedClaims,
+          editor_error: edit.editorError,
+          contrast_found: edit.contrastFound,
+          contrast_kept: edit.contrastKept,
+          image_error: heroImageError,
         },
       }),
     }).catch(() => {});
@@ -724,10 +844,18 @@ Return a JSON object with EXACTLY these fields:
       article: {
         title: articleData.title,
         slug: publishPayload.slug,
-        status: targetStatus,
+        status: finalStatus,
         word_count: articleData.body.split(/\s+/).length,
       },
       mode: publishMode,
+      review: {
+        held,
+        unsupported_claims: edit.unsupportedClaims,
+        editor_error: edit.editorError,
+        contrast_found: edit.contrastFound,
+        contrast_kept: edit.contrastKept,
+      },
+      image_error: heroImageError,
     });
   } catch (error) {
     // Revert calendar status on any failure
