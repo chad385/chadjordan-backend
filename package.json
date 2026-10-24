@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test:social-upload": "node --experimental-strip-types --test src/lib/social/youtube.test.ts",
     "test:contrast": "node --experimental-strip-types --test src/lib/content/contrast.test.ts",
+    "eval:editor": "node --env-file=.env.local --experimental-strip-types scripts/eval-editor.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
