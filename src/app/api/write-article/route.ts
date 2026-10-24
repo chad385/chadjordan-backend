@@ -410,6 +410,7 @@ JOB 2 — CLIENT-CLAIM CHECK (do NOT fix these):
 - List every statement about a named client, person, or project (deliverables, process, order of work, timeline, outcomes, quotes, attributions).
 - Check each against the PROOF section of the brand context (proof/case-studies and proof/testimonials). A claim is supported only if the proof section states it.
 - For each unsupported claim: copy the sentence exactly into "unsupported_claims" and say what isn't supported. LEAVE THAT SENTENCE UNCHANGED in the body so a human reviewer can see it. Do not soften, delete, or rewrite it.
+- Decide before you list. Only claims you conclude are NOT supported go in "unsupported_claims"; never list a claim and then say it's fine.
 
 Return ONLY a JSON object, no commentary:
 {"body": "the edited HTML body", "excerpt": "the excerpt, edited by the same style rules", "contrast_found": 0, "contrast_kept": 0, "unsupported_claims": [{"sentence": "...", "reason": "..."}]}
