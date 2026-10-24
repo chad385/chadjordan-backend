@@ -14,7 +14,7 @@ export default function GuidePage() {
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-8 py-10">
         <p className="text-[13px] font-medium text-minimal-muted mb-2">Guide</p>
-        <h1 className="text-2xl font-semibold text-white mb-8">How this Compound works</h1>
+        <h1 className="text-2xl font-semibold text-white mb-8">How this studio works</h1>
 
         <div
           className="[&_h2]:text-white [&_h2]:text-[15px] [&_h2]:font-semibold [&_h2]:mt-9 [&_h2]:mb-3 [&_h2:first-child]:mt-0
