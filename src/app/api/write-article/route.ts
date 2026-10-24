@@ -50,6 +50,7 @@ interface BrandContext {
   imageStyle: string;
   imageAvoid: string;
   imageCompositions: string[];
+  imageOpener: string;
 }
 
 async function loadBrandContext(): Promise<BrandContext> {
@@ -91,7 +92,12 @@ async function loadBrandContext(): Promise<BrandContext> {
     .map((line) => line.replace(/^\s*[-*]\s*/, "").trim())
     .filter((line) => line && !line.startsWith("#"));
 
-  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid, imageCompositions };
+  //   image_opener → the words every image prompt starts with, completed by
+  //   the article's own subject (e.g. "Stills archive of a")
+  const openerRow = rows.find((r) => r.category === "content" && r.key === "image_opener");
+  const imageOpener = openerRow?.content?.trim() || "A photograph of";
+
+  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid, imageCompositions, imageOpener };
 }
 
 // ─── Fetch existing articles for internal linking ────────────────────────────
@@ -132,14 +138,14 @@ function base64ToArrayBuffer(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-// Fallback compositions, used only when brand_context has no
-// content/image_compositions row. Kept neutral and literal so they never fight
-// an instance's Visual DNA. Rotated deterministically per slug so consecutive
-// articles never share a frame.
+// Fallback framings, used only when brand_context has no
+// content/image_compositions row. These say HOW the subject is shot (distance,
+// angle, depth), never WHAT is in the frame — the subject comes from the
+// article. Rotated deterministically per slug.
 const DEFAULT_COMPOSITIONS = [
-  "Composition: a single subject at a natural, human distance, eye level, with generous negative space.",
-  "Composition: a close detail of an object or surface that carries the story, shallow depth of field.",
-  "Composition: a quiet, wider view of a real room or place, with the subject clearly readable in the frame.",
+  "Framing: close, shallow depth of field, the subject sharp against a soft background.",
+  "Framing: medium distance, eye level, the subject off-center with generous negative space.",
+  "Framing: a wider view with the subject clearly readable in the middle distance.",
 ];
 
 function hashString(value: string): number {
@@ -150,16 +156,38 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
+interface HeroImageResult {
+  url: string | null;
+  error: string | null;
+  subject: string;
+  framing: string;
+}
+
 async function generateHeroImage(
-  title: string,
   keyword: string,
   slug: string,
-  imageStyle?: string,
-  imageConcept?: string,
-  imageAvoid?: string,
-  imageCompositions: string[] = []
-): Promise<{ url: string | null; error: string | null }> {
-  if (!process.env.OPENAI_API_KEY) return { url: null, error: "OPENAI_API_KEY not set" };
+  imageStyle: string,
+  imageConcept: string | undefined,
+  imageAvoid: string,
+  imageCompositions: string[],
+  imageOpener: string
+): Promise<HeroImageResult> {
+  const compositions = imageCompositions.length > 0 ? imageCompositions : DEFAULT_COMPOSITIONS;
+  const framing = compositions[hashString(slug) % compositions.length];
+  // The subject is the article's own: opener + the writer's image_concept.
+  // Drop a leading article from the concept when the opener already ends in one.
+  const concept = (imageConcept?.trim() || `real, ordinary scene connected to "${keyword}", shown literally`)
+    .replace(/\.$/, "");
+  const endsWithArticle = /\s(a|an)$/i.test(imageOpener);
+  const noun = endsWithArticle ? concept.replace(/^(a|an|the)\s+/i, "") : concept;
+  // "Stills archive of a" + "empty chair" → "…of an empty chair"
+  const opener = endsWithArticle
+    ? imageOpener.replace(/\s(a|an)$/i, /^[aeiou]/i.test(noun) ? " an" : " a")
+    : imageOpener;
+  const subject = `${opener} ${noun}`;
+  const fail = (error: string): HeroImageResult => ({ url: null, error, subject, framing });
+
+  if (!process.env.OPENAI_API_KEY) return fail("OPENAI_API_KEY not set");
 
   try {
     const openai = new OpenAI();
@@ -173,24 +201,20 @@ uncluttered composition with negative space, natural directional light. Restrain
     // The style DNA is PREPENDED to every prompt so the grade/palette/mood is
     // consistent no matter the subject — this is the CSG-PRO "Visual DNA" idea.
     const styleGuide = imageStyle || defaultStyle;
-    const compositions = imageCompositions.length > 0 ? imageCompositions : DEFAULT_COMPOSITIONS;
-    const composition = compositions[hashString(slug) % compositions.length];
-    const subject = imageConcept
-      ? `Subject (build the whole frame around this): ${imageConcept}`
-      : `Subject: one literal moment from a real scene related to "${keyword}" — a single figure, a close trace of human presence, or a wider environment. A real place or object shown plainly, not a metaphor or symbol.`;
 
     // The config avoid list is APPENDED after the universal (model-safety) rules.
     const avoidLine = imageAvoid?.trim()
       ? `\n- Avoid: ${imageAvoid.trim()}`
       : "";
 
-    const imagePrompt = `Create a hero image for a blog article titled "${title}" (topic: ${keyword}).
+    // The prompt OPENS with the subject (the opener is chosen for how it steers
+    // the frame), then framing, then the brand's Visual DNA.
+    const imagePrompt = `${subject}.
 
-${subject}
+${framing}
 
 VISUAL DNA (apply this grade, palette, and mood to the whole frame):
 ${styleGuide}
-${composition}
 
 CRITICAL RULES:
 - ABSOLUTELY NO TEXT. No words, letters, numbers, logos, watermarks, or signatures
@@ -217,10 +241,10 @@ CRITICAL RULES:
       imageBuffer = base64ToArrayBuffer(generated.b64_json);
     } else if (generated?.url) {
       const imageRes = await fetch(generated.url);
-      if (!imageRes.ok) return { url: null, error: `Image download failed: HTTP ${imageRes.status}` };
+      if (!imageRes.ok) return fail(`Image download failed: HTTP ${imageRes.status}`);
       imageBuffer = await imageRes.arrayBuffer();
     }
-    if (!imageBuffer) return { url: null, error: "Image API returned no image data" };
+    if (!imageBuffer) return fail("Image API returned no image data");
 
     const supabase = createAdminClient();
     // Unique suffix so a new article's image can never overwrite an existing
@@ -236,7 +260,7 @@ CRITICAL RULES:
 
     if (uploadError) {
       console.error("Image upload failed:", uploadError.message);
-      return { url: null, error: `Image upload failed: ${uploadError.message}` };
+      return fail(`Image upload failed: ${uploadError.message}`);
     }
 
     // Get the public URL
@@ -244,7 +268,7 @@ CRITICAL RULES:
       .from("images")
       .getPublicUrl(fileName);
 
-    return { url: publicUrl.publicUrl, error: null };
+    return { url: publicUrl.publicUrl, error: null, subject, framing };
   } catch (err) {
     console.error("Hero image generation failed:", err);
     // Name the OpenAI organization the key belongs to: image models need a
@@ -255,7 +279,7 @@ CRITICAL RULES:
         ? (headers as Headers).get("openai-organization")
         : (headers as Record<string, string> | undefined)?.["openai-organization"];
     const message = err instanceof Error ? err.message : String(err);
-    return { url: null, error: org ? `${message} (OpenAI org: ${org})` : message };
+    return fail(org ? `${message} (OpenAI org: ${org})` : message);
   }
 }
 
@@ -674,7 +698,7 @@ Return a JSON object with EXACTLY these fields:
   "semantic_tags": ["tag1", "tag2", "tag3"],
   "target_segments": ["segment1"],
   "content_type": "article",
-  "image_concept": "one sentence describing a LITERAL, real moment that mirrors this article's subject — one of: a single figure absorbed in an action (in profile, eyes down, never facing the camera), a close trace of human presence (worn objects, a lit doorway, a used desk), or a quiet wider environment. A real place shown plainly at one distance, lit by one or two practical light sources. NOT a metaphor, symbol, or epic/surreal/monumental concept, not a 'world'. No text, no faces to camera, no documents, charts or screens.",
+  "image_concept": "a short noun phrase naming the specific object, place, or moment THIS article is really about, written to read naturally after \"${brand.imageOpener}\" (for example: proposal left face-down on a conference table after the meeting). Derive it from the article's argument, not a generic office or desk scene. Follow the image rules in the brand context (content/image_style), including whether a person may appear. Literal, not a metaphor. No text, no documents with visible writing, no charts or screens showing content.",
   "faqs": [{"question": "Q1?", "answer": "A1"}, {"question": "Q2?", "answer": "A2"}],
   "seo": {
     "title": "SEO meta title under 60 chars",
@@ -802,15 +826,17 @@ Return a JSON object with EXACTLY these fields:
       : null;
 
     // 7. Generate hero image (non-blocking — article still saves if this fails)
-    const { url: heroImageUrl, error: heroImageError } = await generateHeroImage(
-      articleData.title,
+    const hero = await generateHeroImage(
       entry.target_keyword || articleData.semantic_tags?.[0] || "business technology",
       articleData.slug,
       brand.imageStyle,
       articleData.image_concept,
       brand.imageAvoid,
-      brand.imageCompositions
+      brand.imageCompositions,
+      brand.imageOpener
     );
+    const heroImageUrl = hero.url;
+    const imageReport = { subject: hero.subject, framing: hero.framing, error: hero.error };
 
     // 8. Save via Frontend API
     const publishPayload = {
@@ -929,7 +955,7 @@ Return a JSON object with EXACTLY these fields:
           unsupported_claims: edit.unsupportedClaims,
           editor_error: edit.editorError,
           contrast: contrastReport,
-          image_error: heroImageError,
+          image: imageReport,
         },
       }),
     }).catch(() => {});
@@ -949,7 +975,7 @@ Return a JSON object with EXACTLY these fields:
         editor_error: edit.editorError,
         contrast: contrastReport,
       },
-      image_error: heroImageError,
+      image: imageReport,
     });
   } catch (error) {
     // Revert calendar status on any failure
