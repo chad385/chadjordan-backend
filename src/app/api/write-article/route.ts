@@ -16,6 +16,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { findContrasts, type ContrastHit } from "@/lib/content/contrast";
 
 
 const FRONTEND_URL =
@@ -246,7 +247,15 @@ CRITICAL RULES:
     return { url: publicUrl.publicUrl, error: null };
   } catch (err) {
     console.error("Hero image generation failed:", err);
-    return { url: null, error: err instanceof Error ? err.message : String(err) };
+    // Name the OpenAI organization the key belongs to: image models need a
+    // verified org, so "model does not exist" usually means the wrong org.
+    const headers = (err as { headers?: Headers | Record<string, string> })?.headers;
+    const org =
+      headers && typeof (headers as Headers).get === "function"
+        ? (headers as Headers).get("openai-organization")
+        : (headers as Record<string, string> | undefined)?.["openai-organization"];
+    const message = err instanceof Error ? err.message : String(err);
+    return { url: null, error: org ? `${message} (OpenAI org: ${org})` : message };
   }
 }
 
@@ -452,6 +461,46 @@ ${draft.body}`;
       editorError: err instanceof Error ? err.message : "unknown error",
     };
   }
+}
+
+// ─── Contrast check (code, not model) ────────────────────────────────────────
+
+const MAX_CONTRASTS = 1;
+const MAX_CONTRAST_REWRITES = 2;
+
+/** Count contrasts in the article text only — the FAQ isn't part of the argument. */
+function articleContrasts(body: string): ContrastHit[] {
+  const main = body.split(/<h2[^>]*>\s*Frequently Asked Questions/i)[0];
+  return findContrasts(main);
+}
+
+/**
+ * Hand the model the exact sentences the code flagged and ask for direct
+ * rewrites of all but one. Sentences flagged as client claims are frozen so
+ * the reviewer still sees them unchanged.
+ */
+async function rewriteContrasts(
+  anthropic: Anthropic,
+  body: string,
+  hits: ContrastHit[],
+  frozen: string[]
+): Promise<string> {
+  const list = hits.map((h, i) => `${i + 1}. ${h.sentence}`).join("\n");
+  const frozenList = frozen.length
+    ? `\nDo NOT change these sentences, even if listed above:\n${frozen.map((f) => `- ${f}`).join("\n")}\n`
+    : "";
+  const message = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 16384,
+    system: `You are a line editor. The listed sentences each set something up only to deny it or contrast it ("look newer, not more established", "not to list services, but to give…", "rather than", "It isn't A. It's B."). Keep at most ONE of them unchanged (the strongest). Rewrite every other one so it states the positive point directly, with no "not", "rather than", or "instead of" contrast. Change nothing else in the body: same facts, links, headings, HTML, and FAQ. Return ONLY JSON: {"body": "the full edited HTML body"}, with double quotes inside HTML attributes escaped as \\".`,
+    messages: [{ role: "user", content: `Sentences to fix:\n${list}\n${frozenList}\nBody (HTML):\n${body}` }],
+  });
+  const text = message.content[0].type === "text" ? message.content[0].text : "";
+  const out = parseModelJson<{ body?: string }>(text);
+  if (!out.body || out.body.length < body.length * 0.5) {
+    throw new Error("Contrast rewrite returned an empty or truncated body");
+  }
+  return out.body;
 }
 
 // ─── Main handler ────────────────────────────────────────────────────────────
@@ -695,15 +744,61 @@ Return a JSON object with EXACTLY these fields:
     });
     articleData.body = edit.body;
     articleData.excerpt = edit.excerpt;
-    const held = edit.unsupportedClaims.length > 0 || Boolean(edit.editorError);
+
+    // 6c. Contrast check in code. The editor's own count isn't trusted.
+    let contrasts = articleContrasts(articleData.body);
+    const contrastsAfterEditor = contrasts.length;
+    let contrastRewrites = 0;
+    let contrastRewriteError: string | null = null;
+    while (contrasts.length > MAX_CONTRASTS && contrastRewrites < MAX_CONTRAST_REWRITES) {
+      contrastRewrites++;
+      try {
+        articleData.body = await rewriteContrasts(
+          anthropic,
+          articleData.body,
+          contrasts,
+          edit.unsupportedClaims.map((c) => c.sentence)
+        );
+      } catch (err) {
+        contrastRewriteError = err instanceof Error ? err.message : "unknown error";
+        console.error("Contrast rewrite failed:", err);
+        break;
+      }
+      contrasts = articleContrasts(articleData.body);
+    }
+    const contrastReport = {
+      editor_self_report: edit.contrastKept,
+      after_editor: contrastsAfterEditor,
+      final: contrasts.length,
+      rewrites: contrastRewrites,
+      remaining: contrasts.map((c) => c.sentence),
+      rewrite_error: contrastRewriteError,
+    };
+
+    const holdReasons: string[] = [];
+    if (edit.editorError) {
+      holdReasons.push(`[HELD: editing pass failed (${edit.editorError}) — review before publishing]`);
+    }
+    if (edit.unsupportedClaims.length > 0) {
+      holdReasons.push(
+        `[HELD: unsupported client claims — do not publish until checked]\n${edit.unsupportedClaims
+          .map((c) => `• "${c.sentence}" — ${c.reason}`)
+          .join("\n")}`
+      );
+    }
+    if (contrasts.length > MAX_CONTRASTS) {
+      holdReasons.push(
+        `[HELD: style — ${contrasts.length} "not X, it's Y" sentences remain (limit ${MAX_CONTRASTS})]\n${contrasts
+          .map((c) => `• "${c.sentence}"`)
+          .join("\n")}`
+      );
+    }
+    const held = holdReasons.length > 0;
     const finalStatus = held ? "draft" : targetStatus;
-    const holdNote = edit.editorError
-      ? `[HELD: editing pass failed (${edit.editorError}) — review before publishing]`
-      : edit.unsupportedClaims.length > 0
-        ? `[HELD: unsupported client claims — do not publish until checked]\n${edit.unsupportedClaims
-            .map((c) => `• "${c.sentence}" — ${c.reason}`)
-            .join("\n")}`
-        : null;
+    // One "[HELD" prefix so the content board recognises it; reasons follow.
+    const holdNote = held
+      ? holdReasons.map((r, i) => (i === 0 ? r : r.replace(/^\[HELD: /, "["))).join("\n")
+      : null;
 
     // 7. Generate hero image (non-blocking — article still saves if this fails)
     const { url: heroImageUrl, error: heroImageError } = await generateHeroImage(
@@ -832,8 +927,7 @@ Return a JSON object with EXACTLY these fields:
           held_for_review: held,
           unsupported_claims: edit.unsupportedClaims,
           editor_error: edit.editorError,
-          contrast_found: edit.contrastFound,
-          contrast_kept: edit.contrastKept,
+          contrast: contrastReport,
           image_error: heroImageError,
         },
       }),
@@ -852,8 +946,7 @@ Return a JSON object with EXACTLY these fields:
         held,
         unsupported_claims: edit.unsupportedClaims,
         editor_error: edit.editorError,
-        contrast_found: edit.contrastFound,
-        contrast_kept: edit.contrastKept,
+        contrast: contrastReport,
       },
       image_error: heroImageError,
     });
