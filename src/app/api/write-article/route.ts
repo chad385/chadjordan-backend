@@ -18,6 +18,15 @@ import OpenAI from "openai";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { findContrasts, type ContrastHit } from "@/lib/content/contrast";
 import { editDraft, parseModelJson } from "@/lib/content/editor";
+import {
+  buildImagePrompt,
+  composeSubject,
+  describeOpenAIError,
+  htmlToText,
+  pickFraming,
+  pickImageSubject,
+  renderImage,
+} from "@/lib/content/image";
 
 
 const FRONTEND_URL =
@@ -128,160 +137,38 @@ async function fetchPublishedSlugs(): Promise<
   }
 }
 
-// ─── Hero image generation ───────────────────────────────────────────────────
+// ─── Hero image ──────────────────────────────────────────────────────────────
 
-function base64ToArrayBuffer(value: string): ArrayBuffer {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+const RECENT_SUBJECTS = 8;
+
+/** Subjects and framings of the most recent hero images (newest first), from the agent log. */
+async function recentImages(): Promise<{ subjects: string[]; framings: string[] }> {
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("agent_logs")
+    .select("output_data")
+    .in("action", ["write_article", "regenerate_hero"])
+    .order("created_at", { ascending: false })
+    .limit(40);
+  const subjects: string[] = [];
+  const framings: string[] = [];
+  for (const row of data || []) {
+    const image = (row.output_data as { image?: { subject?: string; framing?: string; error?: string | null } } | null)?.image;
+    if (!image?.subject || image.error || subjects.includes(image.subject)) continue;
+    subjects.push(image.subject);
+    if (image.framing) framings.push(image.framing);
+    if (subjects.length >= RECENT_SUBJECTS) break;
   }
-  return bytes.buffer;
+  return { subjects, framings };
 }
 
-// Fallback framings, used only when brand_context has no
-// content/image_compositions row. These say HOW the subject is shot (distance,
-// angle, depth), never WHAT is in the frame — the subject comes from the
-// article. Rotated deterministically per slug.
-const DEFAULT_COMPOSITIONS = [
-  "Framing: close, shallow depth of field, the subject sharp against a soft background.",
-  "Framing: medium distance, eye level, the subject off-center with generous negative space.",
-  "Framing: a wider view with the subject clearly readable in the middle distance.",
-];
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
-}
-
-interface HeroImageResult {
-  url: string | null;
-  error: string | null;
-  subject: string;
-  framing: string;
-}
-
-async function generateHeroImage(
-  keyword: string,
-  slug: string,
-  imageStyle: string,
-  imageConcept: string | undefined,
-  imageAvoid: string,
-  imageCompositions: string[],
-  imageOpener: string
-): Promise<HeroImageResult> {
-  const compositions = imageCompositions.length > 0 ? imageCompositions : DEFAULT_COMPOSITIONS;
-  const framing = compositions[hashString(slug) % compositions.length];
-  // The subject is the article's own: opener + the writer's image_concept.
-  // Drop a leading article from the concept when the opener already ends in one.
-  const concept = (imageConcept?.trim() || `real, ordinary scene connected to "${keyword}", shown literally`)
-    .replace(/\.$/, "");
-  const endsWithArticle = /\s(a|an)$/i.test(imageOpener);
-  const noun = endsWithArticle ? concept.replace(/^(a|an|the)\s+/i, "") : concept;
-  // "Stills archive of a" + "empty chair" → "…of an empty chair"
-  const opener = endsWithArticle
-    ? imageOpener.replace(/\s(a|an)$/i, /^[aeiou]/i.test(noun) ? " an" : " a")
-    : imageOpener;
-  const subject = `${opener} ${noun}`;
-  const fail = (error: string): HeroImageResult => ({ url: null, error, subject, framing });
-
-  if (!process.env.OPENAI_API_KEY) return fail("OPENAI_API_KEY not set");
-
-  try {
-    const openai = new OpenAI();
-
-    // Placeholder Visual DNA — instances set their own in brand_context
-    // (content/image_style). Kept deliberately neutral so the template is
-    // brand-agnostic; the real grade/palette/mood comes from config.
-    const defaultStyle = `Clean, modern editorial photography. A single clear focal subject,
-uncluttered composition with negative space, natural directional light. Restrained and intentional.`;
-
-    // The style DNA is PREPENDED to every prompt so the grade/palette/mood is
-    // consistent no matter the subject — this is the CSG-PRO "Visual DNA" idea.
-    const styleGuide = imageStyle || defaultStyle;
-
-    // The config avoid list is APPENDED after the universal (model-safety) rules.
-    const avoidLine = imageAvoid?.trim()
-      ? `\n- Avoid: ${imageAvoid.trim()}`
-      : "";
-
-    // The prompt OPENS with the subject (the opener is chosen for how it steers
-    // the frame), then framing, then the brand's Visual DNA.
-    const imagePrompt = `${subject}.
-
-${framing}
-
-VISUAL DNA (apply this grade, palette, and mood to the whole frame):
-${styleGuide}
-
-CRITICAL RULES:
-- ABSOLUTELY NO TEXT. No words, letters, numbers, logos, watermarks, or signatures
-- No documents, charts, screens, books or paper with visible writing — these render as garbled fake text
-- No faces turned toward the camera, no handshakes, no people pointing at screens
-- Readable at thumbnail size: clear focal point, strong tonal contrast${avoidLine}`;
-
-    const isDalleModel = OPENAI_IMAGE_MODEL.startsWith("dall-e");
-    const response = await openai.images.generate({
-      model: OPENAI_IMAGE_MODEL,
-      prompt: imagePrompt,
-      n: 1,
-      size: isDalleModel ? "1792x1024" : "1536x1024",
-      quality: isDalleModel ? "hd" : "high",
-      ...(isDalleModel ? { response_format: "url" } : {}),
-    } as Parameters<typeof openai.images.generate>[0]);
-
-    const imageResponse = response as unknown as {
-      data?: Array<{ b64_json?: string | null; url?: string | null }>;
-    };
-    const generated = imageResponse.data?.[0];
-    let imageBuffer: ArrayBuffer | null = null;
-    if (generated?.b64_json) {
-      imageBuffer = base64ToArrayBuffer(generated.b64_json);
-    } else if (generated?.url) {
-      const imageRes = await fetch(generated.url);
-      if (!imageRes.ok) return fail(`Image download failed: HTTP ${imageRes.status}`);
-      imageBuffer = await imageRes.arrayBuffer();
-    }
-    if (!imageBuffer) return fail("Image API returned no image data");
-
-    const supabase = createAdminClient();
-    // Unique suffix so a new article's image can never overwrite an existing
-    // article's hero — slugs can collide and get deduped after the image is made.
-    const fileName = `blog/${slug}-${crypto.randomUUID().slice(0, 8)}-hero.png`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("images")
-      .upload(fileName, imageBuffer, {
-        contentType: "image/png",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error("Image upload failed:", uploadError.message);
-      return fail(`Image upload failed: ${uploadError.message}`);
-    }
-
-    // Get the public URL
-    const { data: publicUrl } = supabase.storage
-      .from("images")
-      .getPublicUrl(fileName);
-
-    return { url: publicUrl.publicUrl, error: null, subject, framing };
-  } catch (err) {
-    console.error("Hero image generation failed:", err);
-    // Name the OpenAI organization the key belongs to: image models need a
-    // verified org, so "model does not exist" usually means the wrong org.
-    const headers = (err as { headers?: Headers | Record<string, string> })?.headers;
-    const org =
-      headers && typeof (headers as Headers).get === "function"
-        ? (headers as Headers).get("openai-organization")
-        : (headers as Record<string, string> | undefined)?.["openai-organization"];
-    const message = err instanceof Error ? err.message : String(err);
-    return fail(org ? `${message} (OpenAI org: ${org})` : message);
-  }
+/** Uploads PNG bytes under a unique name (so no article can overwrite another's hero). */
+async function uploadHero(slug: string, png: ArrayBuffer): Promise<string> {
+  const supabase = createAdminClient();
+  const fileName = `blog/${slug}-${crypto.randomUUID().slice(0, 8)}-hero.png`;
+  const { error } = await supabase.storage.from("images").upload(fileName, png, { contentType: "image/png", upsert: true });
+  if (error) throw new Error(`Image upload failed: ${error.message}`);
+  return supabase.storage.from("images").getPublicUrl(fileName).data.publicUrl;
 }
 
 // ─── Contrast check (code, not model) ────────────────────────────────────────
@@ -494,7 +381,6 @@ Return a JSON object with EXACTLY these fields:
   "semantic_tags": ["tag1", "tag2", "tag3"],
   "target_segments": ["segment1"],
   "content_type": "article",
-  "image_concept": "a short noun phrase naming the specific object, place, or moment THIS article is really about, written to read naturally after \"${brand.imageOpener}\" (for example: proposal left face-down on a conference table after the meeting). Derive it from the article's argument, not a generic office or desk scene. Follow the image rules in the brand context (content/image_style), including whether a person may appear. Literal, not a metaphor. No text, no documents with visible writing, no charts or screens showing content.",
   "faqs": [{"question": "Q1?", "answer": "A1"}, {"question": "Q2?", "answer": "A2"}],
   "seo": {
     "title": "SEO meta title under 60 chars",
@@ -526,7 +412,6 @@ Return a JSON object with EXACTLY these fields:
       semantic_tags: string[];
       target_segments: string[];
       content_type: string;
-      image_concept?: string;
       pull_quote?: string;
       faqs?: { question: string; answer: string }[];
       seo: {
@@ -622,17 +507,47 @@ Return a JSON object with EXACTLY these fields:
       : null;
 
     // 7. Generate hero image (non-blocking — article still saves if this fails)
-    const hero = await generateHeroImage(
-      entry.target_keyword || articleData.semantic_tags?.[0] || "business technology",
-      articleData.slug,
-      brand.imageStyle,
-      articleData.image_concept,
-      brand.imageAvoid,
-      brand.imageCompositions,
-      brand.imageOpener
-    );
-    const heroImageUrl = hero.url;
-    const imageReport = { subject: hero.subject, framing: hero.framing, error: hero.error };
+    // Subject from the article, checked in code against recent images so the
+    // site's thumbnails don't all show the same scene.
+    let heroImageUrl: string | null = null;
+    let subject = "";
+    let framing = "";
+    let imageError: string | null = null;
+    let subjectPick: Awaited<ReturnType<typeof pickImageSubject>> | null = null;
+    try {
+      const recent = await recentImages();
+      subjectPick = await pickImageSubject(anthropic, {
+        title: articleData.title,
+        excerpt: articleData.excerpt,
+        bodyText: htmlToText(articleData.body),
+        imageStyle: brand.imageStyle,
+        opener: brand.imageOpener,
+        recent: recent.subjects,
+      });
+      subject = composeSubject(
+        brand.imageOpener,
+        subjectPick.concept || `real, ordinary scene connected to "${entry.target_keyword || articleData.title}"`
+      );
+      framing = pickFraming(articleData.slug, brand.imageCompositions, recent.framings);
+      if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
+      const png = await renderImage(
+        new OpenAI(),
+        OPENAI_IMAGE_MODEL,
+        buildImagePrompt({ subject, framing, imageStyle: brand.imageStyle, imageAvoid: brand.imageAvoid })
+      );
+      heroImageUrl = await uploadHero(articleData.slug, png);
+    } catch (err) {
+      console.error("Hero image generation failed:", err);
+      imageError = describeOpenAIError(err);
+    }
+    const imageReport = {
+      subject,
+      framing,
+      error: imageError,
+      subject_attempts: subjectPick?.attempts ?? 0,
+      rejected_subjects: subjectPick?.rejected ?? [],
+      still_repeats: subjectPick?.stillRepeats ?? null,
+    };
 
     // 8. Save via Frontend API
     const publishPayload = {
