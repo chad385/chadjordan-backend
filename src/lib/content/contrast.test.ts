@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-// @ts-expect-error Node's strip-types runner requires the explicit .ts extension.
 import { findContrasts } from "./contrast.ts";
 
 const p = (s: string) => `<p>${s}</p>`;

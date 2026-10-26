@@ -34,11 +34,11 @@
   "images": {
     "binding": "IMAGES"
   },
-  // Social media files (videos + carousel slides). Make the bucket public by
-  // attaching a custom domain (e.g. media.yourdomain.com) and set
-  // R2_PUBLIC_BASE below to match — Meta ingests by pulling that URL, and R2
-  // egress is free.
+  // Public marketing media is required, independently of optional social publishing.
+  // Create this member-owned bucket first; see MEDIA.md.
+  // SOCIAL_MEDIA is preserved from the existing Home.
   "r2_buckets": [
+    { "binding": "PUBLIC_MEDIA", "bucket_name": "chadjordan-public-media" },
     {
       "binding": "SOCIAL_MEDIA",
       "bucket_name": "social-media"
@@ -55,6 +55,7 @@
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_28zqFB6-_3UnbwwRUJwCEQ_pBmzYDhw",
     "DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
     "NEXT_PUBLIC_DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
+    "SOCIAL_SCHEDULER_MODE": "native",
     "R2_PUBLIC_BASE": "https://media.chadjordan.studio",
     // Image model for article hero images. Pinned to a dated snapshot so the
     // look can't drift when OpenAI updates the alias.

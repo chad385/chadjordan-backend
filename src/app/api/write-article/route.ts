@@ -15,6 +15,8 @@ import { authenticateSessionOrApiKey, unauthorizedResponse } from "@/lib/api/aut
 import { createAdminClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { mediaBase, mediaBucket, savePublicImage } from "@/lib/media/public-media";
+import { mediaEnvironment } from "@/lib/media/runtime";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { findContrasts, type ContrastHit } from "@/lib/content/contrast";
 import { editDraft, parseModelJson } from "@/lib/content/editor";
@@ -27,6 +29,7 @@ import {
   pickImageSubject,
   renderImage,
 } from "@/lib/content/image";
+import { BRAND_PROJECTION_KEYS } from "@/lib/brand/playbook-contract";
 
 
 const FRONTEND_URL =
@@ -56,11 +59,13 @@ function frontendFetch(path: string, init?: RequestInit): Promise<Response> {
 interface BrandContext {
   fullContext: string;
   ctaLinks: string;
+  activeOffers: string;
   authorName: string;
   imageStyle: string;
   imageAvoid: string;
   imageCompositions: string[];
   imageOpener: string;
+  imageMode: "automatic" | "text_only";
 }
 
 async function loadBrandContext(): Promise<BrandContext> {
@@ -73,6 +78,16 @@ async function loadBrandContext(): Promise<BrandContext> {
 
   const rows = dbContext || [];
 
+  const missingCore = BRAND_PROJECTION_KEYS.filter(
+    (key) => !rows.some((row) => row.key === key && row.content?.trim())
+  );
+  if (missingCore.length > 0) {
+    throw new Error(
+      `Brand context is not ready for article writing. Missing Playbook projection rows: ${missingCore.join(", ")}. ` +
+        "Run the scoped Brand Playbook publisher sync before writing."
+    );
+  }
+
   const fullContext = rows
     .map((row) => `# ${row.category}/${row.key}\n\n${row.content}`)
     .join("\n\n---\n\n");
@@ -80,6 +95,21 @@ async function loadBrandContext(): Promise<BrandContext> {
   // Extract CTA links from brand context (category: "cta", key: "links")
   const ctaRow = rows.find((r) => r.category === "cta" && r.key === "links");
   const ctaLinks = ctaRow?.content || "";
+
+  const { data: offers, error: offersError } = await supabase
+    .from("offers")
+    .select("name, tagline, description, price_display, cta_text, cta_url, who_its_for")
+    .eq("status", "active")
+    .order("position_in_ladder", { ascending: true, nullsFirst: false });
+  if (offersError) throw new Error(`Operational offer readiness check failed: ${offersError.message}`);
+  const activeOffers = (offers || []).map((offer) => [
+    `- ${offer.name}`,
+    offer.who_its_for ? `For: ${offer.who_its_for}` : null,
+    offer.tagline || offer.description || null,
+    offer.price_display ? `Approved price display: ${offer.price_display}` : null,
+    offer.cta_text ? `CTA label: ${offer.cta_text}` : null,
+    offer.cta_url ? `CTA URL: ${offer.cta_url}` : null,
+  ].filter(Boolean).join("\n  ")).join("\n");
 
   // Extract author name from brand context (category: "identity", key: "author")
   const authorRow = rows.find((r) => r.category === "identity" && r.key === "author");
@@ -107,7 +137,11 @@ async function loadBrandContext(): Promise<BrandContext> {
   const openerRow = rows.find((r) => r.category === "content" && r.key === "image_opener");
   const imageOpener = openerRow?.content?.trim() || "A photograph of";
 
-  return { fullContext, ctaLinks, authorName, imageStyle, imageAvoid, imageCompositions, imageOpener };
+
+  const imageModeRow = rows.find((r) => r.category === "content" && r.key === "article_image_mode");
+  const imageMode = imageModeRow?.content?.trim();
+  if (imageMode !== "automatic" && imageMode !== "text_only") throw new Error("Article imagery preference is not configured. Simon must record automatic or text_only before writing.");
+  return { fullContext, ctaLinks, activeOffers, authorName, imageStyle, imageAvoid, imageCompositions, imageOpener, imageMode };
 }
 
 // ─── Fetch existing articles for internal linking ────────────────────────────
@@ -162,13 +196,13 @@ async function recentImages(): Promise<{ subjects: string[]; framings: string[] 
   return { subjects, framings };
 }
 
-/** Uploads PNG bytes under a unique name (so no article can overwrite another's hero). */
-async function uploadHero(slug: string, png: ArrayBuffer): Promise<string> {
-  const supabase = createAdminClient();
-  const fileName = `blog/${slug}-${crypto.randomUUID().slice(0, 8)}-hero.png`;
-  const { error } = await supabase.storage.from("images").upload(fileName, png, { contentType: "image/png", upsert: true });
-  if (error) throw new Error(`Image upload failed: ${error.message}`);
-  return supabase.storage.from("images").getPublicUrl(fileName).data.publicUrl;
+/**
+ * Saves the hero to the public media bucket (2.9.0). The image is optimised to
+ * WebP and named by its content digest, so no article can overwrite another's.
+ */
+async function uploadHero(slug: string, image: ArrayBuffer, backendOrigin: string): Promise<string> {
+  const saved = await savePublicImage(mediaEnvironment(), image, slug, backendOrigin);
+  return saved.url;
 }
 
 // ─── Contrast check (code, not model) ────────────────────────────────────────
@@ -288,7 +322,7 @@ export async function POST(request: NextRequest) {
       : settingsData?.value === "autonomous"
         ? "autonomous"
         : "safe";
-  const targetStatus = publishMode === "autonomous" ? "published" : "draft";
+  const targetStatus: "published" | "draft" = publishMode === "autonomous" ? "published" : "draft";
 
   // 3. Mark as writing
   await supabase
@@ -303,6 +337,14 @@ export async function POST(request: NextRequest) {
       fetchPublishedSlugs(),
     ]);
 
+
+    if (brand.imageMode === "automatic") {
+      mediaBucket(mediaEnvironment());
+      mediaBase(mediaEnvironment(), request.nextUrl.origin);
+      if (!mediaEnvironment().IMAGES) throw new Error("Image optimisation is not configured");
+      if (!process.env.OPENAI_API_KEY) throw new Error("Automatic imagery needs the saved OpenAI key");
+    }
+
     const internalLinks = publishedArticles.length > 0
       ? `\n\nExisting articles for internal linking (use these exact paths — they are the canonical URLs):\n${publishedArticles
           .map((a) => `- ${a.path} — "${a.title}"`)
@@ -312,7 +354,9 @@ export async function POST(request: NextRequest) {
     // Build CTA instruction from brand context
     const ctaInstruction = brand.ctaLinks
       ? `- The CTA section MUST include one of the links below (choose the most relevant for the article topic). Use ONLY these exact links — do not modify the URLs or create new ones:\n${brand.ctaLinks}`
-      : "- End with a CTA section that ties to the brand's offers. Match the article topic to the most relevant offer from the brand context.";
+      : brand.activeOffers
+        ? `- Match the CTA to one active operational offer below. Use only its recorded name, price, status and URL; omit any field that is absent and never infer it:\n${brand.activeOffers}`
+        : "- No active operational offer or configured CTA link exists. End with a non-transactional, no-link next step grounded in the approved offer core. Do not invent a price, URL, checkout destination, testimonial, active status, or availability claim. This draft requires CTA readiness review before publication.";
 
     // 5. Call Claude to write the article
     const anthropic = new Anthropic();
@@ -499,14 +543,10 @@ Return a JSON object with EXACTLY these fields:
           .join("\n")}`
       );
     }
-    const held = holdReasons.length > 0;
-    const finalStatus = held ? "draft" : targetStatus;
-    // One "[HELD" prefix so the content board recognises it; reasons follow.
-    const holdNote = held
-      ? holdReasons.map((r, i) => (i === 0 ? r : r.replace(/^\[HELD: /, "["))).join("\n")
-      : null;
+    // held/finalStatus are settled after the hero image: a failed image also holds the draft.
 
-    // 7. Generate hero image (non-blocking — article still saves if this fails)
+    // 7. Generate hero image. A failure keeps the paid copy but holds it as a
+    // draft (2.9.0 publication guard). text_only mode skips the image call.
     // Subject from the article, checked in code against recent images so the
     // site's thumbnails don't all show the same scene.
     let heroImageUrl: string | null = null;
@@ -514,7 +554,7 @@ Return a JSON object with EXACTLY these fields:
     let framing = "";
     let imageError: string | null = null;
     let subjectPick: Awaited<ReturnType<typeof pickImageSubject>> | null = null;
-    try {
+    if (brand.imageMode === "automatic") try {
       const recent = await recentImages();
       subjectPick = await pickImageSubject(anthropic, {
         title: articleData.title,
@@ -530,17 +570,28 @@ Return a JSON object with EXACTLY these fields:
       );
       framing = pickFraming(articleData.slug, brand.imageCompositions, recent.framings);
       if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
-      const png = await renderImage(
+      const image = await renderImage(
         new OpenAI(),
         OPENAI_IMAGE_MODEL,
-        buildImagePrompt({ subject, framing, imageStyle: brand.imageStyle, imageAvoid: brand.imageAvoid })
+        buildImagePrompt({ subject, framing, imageStyle: brand.imageStyle, imageAvoid: brand.imageAvoid }),
+        "webp"
       );
-      heroImageUrl = await uploadHero(articleData.slug, png);
+      heroImageUrl = await uploadHero(articleData.slug, image, request.nextUrl.origin);
     } catch (err) {
       console.error("Hero image generation failed:", err);
       imageError = describeOpenAIError(err);
     }
+    if (imageError) {
+      holdReasons.push(`[HELD: hero image failed (${imageError}) — repair the image before publishing]`);
+    }
+    const held = holdReasons.length > 0;
+    const finalStatus = held ? "draft" : targetStatus;
+    // One "[HELD" prefix so the content board recognises it; reasons follow.
+    const holdNote = held
+      ? holdReasons.map((r, i) => (i === 0 ? r : r.replace(/^\[HELD: /, "["))).join("\n")
+      : null;
     const imageReport = {
+      mode: brand.imageMode,
       subject,
       framing,
       error: imageError,
@@ -687,6 +738,10 @@ Return a JSON object with EXACTLY these fields:
         contrast: contrastReport,
       },
       image: imageReport,
+      image_status: imageError ? "failed" : brand.imageMode === "text_only" ? "text_only" : "ready",
+      image_error: imageError,
+      publication_blocked: Boolean(imageError),
+      content_object_id: articleResult?.id,
     });
   } catch (error) {
     // Revert calendar status on any failure

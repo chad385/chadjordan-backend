@@ -98,12 +98,11 @@ Using a separate chat for each repo helps Claude stay in the correct project con
    npm run dev
    ```
 
-7. **Create the `images` storage bucket (optional, but recommended)**
-   The article writer uploads hero images to a Supabase Storage bucket named `images`.
-   - In Supabase, go to **Storage**
-   - Create a new bucket named `images`
-   - Mark it **public** if you want published hero images to load directly on the site
-   If you skip this, article writing still works, but hero image generation will quietly fall back to no image.
+7. **Connect required R2 public media**
+   Follow [MEDIA.md](MEDIA.md): create the member's public image bucket, configure
+   `PUBLIC_MEDIA` and `IMAGES`, and verify optimisation/upload/public delivery.
+   This is required with social scheduling off too. No custom domain is needed.
+   New images are not uploaded to Supabase. Existing images require a reviewed migration.
 
 8. **Deploy to Cloudflare**
    ```bash
@@ -134,10 +133,41 @@ The `CLAUDE.md` file is the complete technical reference — architecture, modul
 ### Fresh-Start Validation
 Once both repos are deployed, verify the setup in this order:
 - Log into the Backend dashboard successfully
+- Run `node scripts/publish-brand-playbook.mjs check --base https://backend.yourdomain.com` and confirm the scoped Brand publisher reports `ready: true`
 - Open `/api/test-frontend` and confirm it returns `status: 200`
 - Run the Frontend repo's `weekly-trends.yml` workflow and confirm new `content_calendar` rows appear
 - Approve one topic, then run `daily-publish.yml`
 - Confirm the article shows up in the Frontend blog as a draft or published post, depending on your publish mode
+
+### Publish a Brand Playbook
+
+The Brand shelf is live-backed. After a strategist has written and approved
+`brand/playbook.json`, publish it without rebuilding or redeploying the app:
+
+```bash
+node scripts/publish-brand-playbook.mjs publish \
+  --file brand/playbook.json \
+  --base https://backend.yourdomain.com \
+  --actor tumi
+```
+
+The command signs the request with `API_SECRET_KEY` from the ignored
+`.env.local`, then reads the live route back and verifies both the shelf
+metadata and its deterministic downstream `brand_context` projection.
+Replacing a playbook automatically archives the previous edition;
+re-publishing the same file is safe, makes no duplicate, and repairs a missing
+or stale projection. The readable result is at `/brand/current`.
+
+For an existing Home whose live shelf predates the projection, run:
+
+```bash
+node scripts/publish-brand-playbook.mjs sync \
+  --base https://backend.yourdomain.com \
+  --actor tumi
+```
+
+This sync leaves independent CTA links, author identity, image style, offers,
+and all other human-configured operational context untouched.
 
 ## Community
 

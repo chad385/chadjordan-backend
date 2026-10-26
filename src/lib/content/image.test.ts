@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-// @ts-expect-error Node's strip-types runner requires the explicit .ts extension.
 import { composeSubject, pickFraming, repeatReason } from "./image.ts";
 
 // Real subjects the engine produced on 2026-10-24.

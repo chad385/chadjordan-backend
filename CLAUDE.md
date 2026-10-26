@@ -1,28 +1,34 @@
+@AGENTS.md
+
 # Digital Home Backend
+
+## Simon / BraveBrand guided setup
+
+When running `mission-build-home`, follow that mission for the member journey and
+completion; use this repository for technical commands and configuration. Simon
+handles both repositories in the existing DM. No new chat or Buzz Project is required.
+Deploy and verify the working foundation with the business facts already supplied.
+The deeper content corpus, Brand Playbook, articles and design are later, optional
+work with Simon or the specialist agents. Their absence does not make a verified
+core build incomplete. Do not start that work automatically or hold the handover
+until it is done. Congratulate the member, deliver both live links and explain the
+next choices after the login and lead loop are verified and shared context is saved.
 
 ## First Time Setup
 
-If you just cloned this repo, follow these steps in order. You need both this repo (Backend) and the [Digital Home Frontend](https://github.com/lukesbrave/digital-home-frontend) repo. **Set up the Frontend first** — it has the shared website migrations.
-
-### Recommended Setup Flow
-
-1. Create one parent folder on your machine called `digital-home`
-2. Open that folder in Claude Code
-3. Do the Frontend setup in **Chat 1**
-4. Do the Backend setup in **Chat 2**
-5. Use the **same Supabase project** for both repos
-
-Using a separate chat for each repo helps Claude stay in the correct project context and avoids confusion between frontend and backend files, migrations, and environment variables.
-
-Before continuing backend setup, confirm Claude is working inside `digital-home-backend` and using the same Supabase project as the Frontend.
+Use both this repo and the [Digital Home Frontend](https://github.com/lukesbrave/digital-home-frontend).
+For a Simon-guided build, keep both in the existing DM and follow the mission's
+order: shared database, dashboard user/admin access, R2 activation, backend,
+frontend, verification. Fetch the frontend migrations first because they own
+the shared schema; the frontend does not need to be deployed first.
+Use one parent `digital-home` folder, separate repository folders, and the same
+Supabase project. Check the working directory before each repo-specific action.
 
 ### Step 0: Check for Node.js
 Before anything else, check if the user has Node.js installed by running `node -v`. If the command fails or is not found, walk them through installing it: go to [nodejs.org](https://nodejs.org), download the LTS version, and run the installer. They need Node.js to run this project.
 
 ### Step 1: Supabase + Migrations (Frontend First)
-If you haven't already, follow the Frontend CLAUDE.md Steps 1-3 to create your Supabase project, run all Frontend migrations (`001` through `011`), and create an admin user. Then run this repo's migration:
-
-- `supabase/migrations/001_backend_core.sql`
+If you haven't already, follow the Frontend CLAUDE.md Steps 1-3 to create your Supabase project, run all Frontend migrations (`001` through `011`), and create an admin user. Then apply every migration in this repo's `supabase/migrations/`, in order.
 
 Both repos share the same database. The Frontend owns the shared website schema; this repo owns `backend_settings` and `brand_context`.
 
@@ -44,13 +50,13 @@ Fill in:
 - `OPENAI_API_KEY` — from [platform.openai.com](https://platform.openai.com) (for OpenAI image-model hero images, optional)
 - `OPENAI_IMAGE_MODEL` — optional; defaults to `gpt-image-1`
 
-### Step 3: Seed Your Brand Context
+### Step 3: Seed Your Brand Context (when beginning content work)
 Your brand context is what makes the AI write in your voice. First, fill in your content corpus files (see the Frontend's `content-corpus-examples/` for the format). Then seed them into Supabase either:
 
 - via the Supabase dashboard / SQL editor, or
 - via the authenticated `/api/setup` route after logging into the Backend
 
-> **⚠️ This is the most important step.** The content corpus is what separates AI that writes like you from AI that writes generic slop. A properly built corpus includes: voice guide, tone examples, content hooks, core positioning, offer architecture, competitive landscape, SEO keyword clusters, and case studies/testimonials. If you haven't completed your content corpus in the Frontend setup, do that first. If you want help building that part properly, the deeper brand intake and strategy workflow is available in the [BraveBrand community](https://www.skool.com/bravebrand).
+> Your content corpus gives article writing your business context. For a Simon-guided foundation build, complete this when the member chooses the later brand/content stage, not as a deployment prerequisite. A properly built corpus includes: voice guide, tone examples, content hooks, core positioning, offer architecture, competitive landscape, SEO keyword clusters, and case studies/testimonials. Before generating brand-specific articles, develop the relevant context with the member. If you want help building that part properly, the deeper brand intake and strategy workflow is available in the [BraveBrand community](https://www.skool.com/bravebrand).
 
 You also need two special entries in the `brand_context` table:
 
@@ -85,55 +91,31 @@ npm run dev
 ```
 Open `http://localhost:3001` and log in with the admin user you created in Supabase.
 
-### Step 5: Create the `images` Storage Bucket
-The article writer uploads hero images to a Supabase Storage bucket named `images`.
-
-In Supabase:
-1. Go to **Storage**
-2. Create a bucket named `images`
-3. Make it **public** if you want article hero images to load directly on the Frontend
-
-If you skip this step, article writing still works, but image uploads will fail gracefully and articles will publish without a hero image.
+### Step 5: Required R2 public media
+Follow `MEDIA.md` to provision and verify the public image pipeline independently
+of social scheduling. Use the existing backend media gateway until a custom
+domain is connected. Do not create a new public Supabase image bucket or silently
+publish an image-enabled article without its hero. Existing storage stays intact
+until a separately reviewed migration is verified.
 
 ### Step 6: Deploy to Cloudflare
 
-The user should have already:
-1. Pushed this repo to their own GitHub
-2. Connected the GitHub repo to Cloudflare (Workers & Pages > Create > Connect to Git)
-3. Used the default build command (`npm run build`) and deploy command (`npx wrangler deploy`)
-4. Completed the first build (it will deploy but login won't work yet — that's expected)
+Follow DEPLOYMENT.md. Simon owns the deployment using the verified account
+access; Worker names and URLs are outputs, not questions for the member.
+Choose the backend name and matching `WORKER_SELF_REFERENCE.service`, configure
+the required public-media bucket and `IMAGES`, then fill real public build
+variables in ignored `.env.local` before compiling. Configure matching runtime
+vars and install secrets through protected Wrangler input without logging values.
+Preserve the member's social choice. If the frontend Worker does not exist yet,
+omit only `FRONTEND_WORKER` for the first backend deploy, then add it once that
+frontend is deployed. Do not remove a binding to an existing frontend.
 
-Ask the user for:
-- Their **Backend Worker URL** (shown in Cloudflare dashboard after first deploy, e.g., `https://digital-home-backend.username.workers.dev`)
-- Their **Backend Worker project name** (whatever they named it in Cloudflare)
-- Their **Frontend Worker project name** (whatever they named the frontend in Cloudflare)
-- Their **Frontend Worker URL** (the live frontend URL they already deployed)
-
-Then do the following automatically:
-
-1. **Update `wrangler.jsonc`** — read the values from `.env.local` and update:
-   - `name` → their Backend Worker project name
-   - `services[0].service` (WORKER_SELF_REFERENCE) → same Backend Worker project name
-   - `services[1].service` (FRONTEND_WORKER) → their Frontend Worker project name (this is a service binding that lets the backend call the frontend directly — without it, Worker-to-Worker requests fail with 404)
-   - `vars.SUPABASE_URL` → the real `SUPABASE_URL` from `.env.local`
-   - `vars.SUPABASE_ANON_KEY` → the real `SUPABASE_ANON_KEY` from `.env.local`
-   - `vars.NEXT_PUBLIC_SUPABASE_URL` → the real `NEXT_PUBLIC_SUPABASE_URL` from `.env.local`
-   - `vars.NEXT_PUBLIC_SUPABASE_ANON_KEY` → the real `NEXT_PUBLIC_SUPABASE_ANON_KEY` from `.env.local`
-   - `vars.DIGITAL_HOME_URL` → the user's live Frontend URL
-   - `vars.NEXT_PUBLIC_DIGITAL_HOME_URL` → same Frontend URL
-
-2. **Commit and push** — this triggers a Cloudflare rebuild with real values
-
-3. **Set server-side secrets** — run these commands, reading each value from `.env.local`:
-   ```bash
-   echo "VALUE" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --name WORKER_NAME
-   echo "VALUE" | npx wrangler secret put API_SECRET_KEY --name WORKER_NAME
-   echo "VALUE" | npx wrangler secret put ANTHROPIC_API_KEY --name WORKER_NAME
-   echo "VALUE" | npx wrangler secret put OPENAI_API_KEY --name WORKER_NAME
-   ```
-   Replace VALUE with the actual values from `.env.local` and WORKER_NAME with their Worker project name.
-
-4. **Verify** — ask the user to visit their Backend Worker URL and confirm login works
+Run `npm run deploy` once, or `npx opennextjs-cloudflare deploy` if the unchanged
+output already passed `npm run build`. Save the resulting backend URL, pin its
+verified `/media` gateway in `PUBLIC_MEDIA_BASE`, and run the signed external
+media probe. Verify dashboard sign-in after deployment. For Simon's foundation
+handover also prove the frontend and lead loop; brand/content work follows the
+member's choice and is not a prerequisite for completing the foundation.
 
 ### Step 7: Verify Frontend Connection
 After login works, visit `https://BACKEND_URL/api/test-frontend` to check the Backend→Frontend connection. You should see `api_key_set: true` and `status: 200`.
@@ -257,7 +239,7 @@ The Backend connects to the same Supabase database as the Digital Home Frontend 
 There are two types of environment variables. Getting this wrong is the most common deployment issue.
 
 ### Build-time public variables
-These are baked into JavaScript at build time. They go in the Cloudflare dashboard (Settings > Variables & Secrets) AND in `wrangler.jsonc` under `vars`:
+These are baked into JavaScript at build time. Supply real values in ignored `.env.local` before a local build, or the CI build environment for Git builds, and in `wrangler.jsonc` under `vars` for runtime:
 ```
 NEXT_PUBLIC_SUPABASE_URL      — Supabase project URL (same as Digital Home)
 NEXT_PUBLIC_SUPABASE_ANON_KEY — Supabase anon key (same as Digital Home)
@@ -265,7 +247,7 @@ NEXT_PUBLIC_DIGITAL_HOME_URL  — Public site URL used for "View live" links in 
 ```
 
 ### Server-side secrets
-These MUST be set using `wrangler secret put` from the terminal. The Cloudflare dashboard UI does NOT work for Workers secrets — only for Pages projects.
+For this workflow, install Worker secrets using `wrangler secret put` with protected input. Keep them in ignored, owner-only local configuration when required; never print them or commit them.
 ```
 SUPABASE_SERVICE_ROLE_KEY     — Service role key, bypasses RLS (same as Digital Home)
 SUPABASE_ANON_KEY             — Duplicate of anon key for server-side access (Workers can't read NEXT_PUBLIC_ at runtime)

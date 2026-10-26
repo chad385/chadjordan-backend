@@ -10,7 +10,6 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-// @ts-expect-error Node's strip-types runner requires the explicit .ts extension.
 import { editDraft } from "../src/lib/content/editor.ts";
 
 const RUNS = Number(process.env.EVAL_RUNS || 2);

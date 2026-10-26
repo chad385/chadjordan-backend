@@ -207,8 +207,17 @@ export function describeOpenAIError(err: unknown): string {
   return org ? `${message} (OpenAI org: ${org})` : message;
 }
 
-/** Calls the image model and returns PNG bytes. Throws on failure. */
-export async function renderImage(openai: OpenAI, model: string, prompt: string): Promise<ArrayBuffer> {
+/**
+ * Calls the image model and returns the image bytes (PNG by default; "webp"
+ * asks GPT image models for a smaller WebP, as the 2.9.0 media path expects).
+ * Throws on failure.
+ */
+export async function renderImage(
+  openai: OpenAI,
+  model: string,
+  prompt: string,
+  format: "png" | "webp" = "png"
+): Promise<ArrayBuffer> {
   const isDalle = model.startsWith("dall-e");
   const response = (await openai.images.generate({
     model,
@@ -216,7 +225,11 @@ export async function renderImage(openai: OpenAI, model: string, prompt: string)
     n: 1,
     size: isDalle ? "1792x1024" : "1536x1024",
     quality: isDalle ? "hd" : "high",
-    ...(isDalle ? { response_format: "url" } : {}),
+    ...(isDalle
+      ? { response_format: "url" }
+      : format === "webp"
+        ? { output_format: "webp", output_compression: 75 }
+        : {}),
   } as Parameters<typeof openai.images.generate>[0])) as unknown as {
     data?: Array<{ b64_json?: string | null; url?: string | null }>;
   };

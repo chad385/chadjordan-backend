@@ -20,7 +20,6 @@ import {
   pickFraming,
   pickImageSubject,
   renderImage,
-  // @ts-expect-error Node's strip-types runner requires the explicit .ts extension.
 } from "../src/lib/content/image.ts";
 
 const args = process.argv.slice(2);

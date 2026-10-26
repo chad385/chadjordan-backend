@@ -201,3 +201,32 @@ prompt now asks for a literal real moment (figure / trace / environment, figure
 in profile eyes-down) instead of a "monumental, surreal SCENE… as a world", and
 the fallback subject line asks for a literal moment instead of a "metaphor".
 Pairs with the `content/image_style` + `image_avoid` brand_context values.
+
+## Upgrade 2.5.6 → 2.9.0 (branch `codex/upgrade-2.9.0`, 2026-10-26)
+
+Applied as a three-way merge of upstream `v2.5.6..v2.9.0` onto this repo (the
+initial commit is v2.5.6 plus theming, so v2.5.6 is the merge base). No
+database migration is part of this range.
+
+- `src/app/api/write-article/route.ts` — the custom writer (editing pass,
+  contrast checks, subject picker, varied framings) is kept as the core. Added
+  from upstream: Playbook projection preflight, active-offers CTA fallback,
+  required `article_image_mode` (`automatic` | `text_only`), and the R2
+  public-media hero path. A failed hero now holds the article as a draft
+  (2.9.0 publication guard) instead of publishing without an image.
+- `src/lib/content/image.ts` — `renderImage` takes an optional `"webp"` format;
+  the writer uses it. `scripts/regenerate-hero.ts` still renders PNG and uploads
+  to Supabase storage: port it to `/api/media/upload` before relying on it,
+  because the publish guard blocks legacy Supabase hero URLs.
+- `wrangler.jsonc` — kept all instance vars; added `PUBLIC_MEDIA` →
+  `chadjordan-public-media` (bucket must be created before deploy) and kept the
+  existing `SOCIAL_MEDIA` binding; added `SOCIAL_SCHEDULER_MODE: native`;
+  `SOCIAL_PUBLISHING_ENABLED` deliberately left absent (existing calendar kept).
+- `src/components/sidebar.tsx` — kept the instance brand name over the stock
+  "Digital Home" wordmark; took upstream's new nav entries.
+- `package.json` — kept custom scripts, added `test:brand`.
+- Removed four obsolete `@ts-expect-error` lines: upstream now enables
+  `allowImportingTsExtensions`.
+- `scripts/test-article-media.mjs` — test double extended with `.in()` and an
+  empty `agent_logs` table so it exercises the custom writer.
+- `VERSION` stays `2.5.6` until the deploy is verified.
