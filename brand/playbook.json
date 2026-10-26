@@ -2,13 +2,13 @@
   "meta": {
     "client": "Chad Jordan Studio",
     "generatedAt": "2026-10-26T14:31:00Z",
-    "version": "1.0-draft",
+    "version": "1.0",
     "selectedAudience": {
       "title": "Founders and partners of expert-led firms",
       "description": "Founders and partners of expert-led firms: advisory, consulting, professional services, specialist B2B, defense and technical firms, founder-led studios. They sell judgment and expertise. Their clients stay once they're in. The problem is getting strangers to the first meeting with the right impression."
     },
     "sources": {
-      "brief": "Assembled by Simon (Digital Home Manager) from the approved live brand_context / frontend content-corpus (updated 2026-10-24): positioning/core-positioning, positioning/offers, positioning/competitive-landscape, proof/case-studies, proof/testimonials, voice/voice-guide, voice/banned-phrases, voice/vocabulary, voice/content-hooks, seo/keyword-clusters. No new research. April 2026 ~/.claude ICP/audience files excluded: superseded positioning.",
+      "brief": "Assembled by Simon (Digital Home Manager) from the approved live brand_context / frontend content-corpus (updated 2026-10-24): positioning/core-positioning, positioning/offers, positioning/competitive-landscape, proof/case-studies, proof/testimonials, voice/voice-guide, voice/banned-phrases, voice/vocabulary, voice/content-hooks, seo/keyword-clusters. No new research. April 2026 ~/.claude ICP/audience files excluded: superseded positioning. Approved by Chad Jordan in Buzz DM, 2026-10-26 14:33 UTC.",
       "transcripts": []
     }
   },
