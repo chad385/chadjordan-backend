@@ -56,6 +56,9 @@
     "DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
     "NEXT_PUBLIC_DIGITAL_HOME_URL": "https://chadjordan-frontend.chad-1a0.workers.dev",
     "SOCIAL_SCHEDULER_MODE": "native",
+    // Pinned so saved article image URLs never depend on which hostname
+    // handled the upload (MEDIA.md step 5).
+    "PUBLIC_MEDIA_BASE": "https://chadjordan-backend.chad-1a0.workers.dev/media",
     "R2_PUBLIC_BASE": "https://media.chadjordan.studio",
     // Image model for article hero images. Pinned to a dated snapshot so the
     // look can't drift when OpenAI updates the alias.

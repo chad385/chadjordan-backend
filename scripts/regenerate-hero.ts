@@ -8,7 +8,8 @@
  * batch comes out varied. Without --apply it only generates and uploads the new
  * images and prints their URLs. With --apply it also points each post (and its
  * share image) at the new file and logs the old URL, so a swap can be reverted.
- * Old images are never deleted.
+ * Old images are never deleted. New images go to the public media bucket
+ * through the backend's signed upload (needs API_SECRET_KEY).
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -21,6 +22,7 @@ import {
   pickImageSubject,
   renderImage,
 } from "../src/lib/content/image.ts";
+import { uploadBlogImage } from "./media-upload.ts";
 
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
@@ -91,16 +93,8 @@ for (const slug of slugs) {
   });
   const subject = composeSubject(opener, pick.concept);
   const framing = pickFraming(slug, compositions, recentFramings);
-  const png = await renderImage(openai, MODEL, buildImagePrompt({ subject, framing, imageStyle, imageAvoid }));
-
-  const fileName = `blog/${slug}-${crypto.randomUUID().slice(0, 8)}-hero.png`;
-  const up = await fetch(`${URL_BASE}/storage/v1/object/images/${fileName}`, {
-    method: "POST",
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "image/png", "x-upsert": "true" },
-    body: Buffer.from(png),
-  });
-  if (!up.ok) throw new Error(`${slug}: upload failed HTTP ${up.status} ${await up.text()}`);
-  const newUrl = `${URL_BASE}/storage/v1/object/public/images/${fileName}`;
+  const image = await renderImage(openai, MODEL, buildImagePrompt({ subject, framing, imageStyle, imageAvoid }), "webp");
+  const { url: newUrl } = await uploadBlogImage(image, slug);
 
   console.log(`\n${slug}`);
   console.log(`  subject: ${subject}`);
