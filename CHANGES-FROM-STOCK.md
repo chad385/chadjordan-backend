@@ -256,3 +256,14 @@ audit frontend direct-publish routes.
   remains on for lead-facing email.
 - Deployed version `9be2bc96-ddbb-40cd-aaa3-cd13f780492a`; alerts enabled
   15:07 UTC.
+
+## Media housekeeping (2026-10-26)
+
+- `PUBLIC_MEDIA_BASE` pinned to `https://chadjordan-backend.chad-1a0.workers.dev/media`.
+- `scripts/media-upload.ts` (signed upload helper), `scripts/migrate-hero-to-r2.ts`
+  (move an existing hero, log previous URL, keep original);
+  `scripts/regenerate-hero.ts` now uploads WebP through the helper.
+- Deployed version `919b61b3-cc3f-4aaa-9c99-87779884b4f3` (previous `9be2bc96`).
+- Migrated the heroes of 3 drafts to R2 (previous Supabase URLs in agent_logs,
+  action `migrate_hero`; originals kept). The 9 published articles still use
+  Supabase-hosted heroes; they serve fine and are not blocked.
