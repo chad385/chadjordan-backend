@@ -242,3 +242,17 @@ media routes present, signed CRM leads read, Brand Playbook 1.0 published
 Follow-ups: pin `PUBLIC_MEDIA_BASE`; migrate the 2 legacy-hero drafts (and
 optionally the 9 published heroes) to R2; port `scripts/regenerate-hero.ts`;
 audit frontend direct-publish routes.
+
+## New-lead owner alerts (2026-10-26, not in upstream)
+
+- `src/lib/crm/new-lead-alerts.ts` (+ test): the CRM tick emails the owner
+  once per new lead via `notifyOwner`. Watches the `leads` table, so it covers
+  the frontend form that inserts directly. Enabled by
+  `backend_settings.crm_new_lead_alerts = true`; watermark
+  `crm_new_lead_alert_since`. Hooked into `runEngineTick` in `engine.ts`.
+- Email: Resend domain `chadjordan.studio` verified 2026-10-26; Worker secret
+  `RESEND_API_KEY` set; `crm_sender` = Chad Jordan Studio
+  <alerts@chadjordan.studio>, reply-to hello@chadjordan.studio. `crm_safe_mode`
+  remains on for lead-facing email.
+- Deployed version `9be2bc96-ddbb-40cd-aaa3-cd13f780492a`; alerts enabled
+  15:07 UTC.
