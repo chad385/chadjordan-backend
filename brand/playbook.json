@@ -1,1 +1,307 @@
-{}
+{
+  "meta": {
+    "client": "Chad Jordan Studio",
+    "generatedAt": "2026-10-26T14:31:00Z",
+    "version": "1.0-draft",
+    "selectedAudience": {
+      "title": "Founders and partners of expert-led firms",
+      "description": "Founders and partners of expert-led firms: advisory, consulting, professional services, specialist B2B, defense and technical firms, founder-led studios. They sell judgment and expertise. Their clients stay once they're in. The problem is getting strangers to the first meeting with the right impression."
+    },
+    "sources": {
+      "brief": "Assembled by Simon (Digital Home Manager) from the approved live brand_context / frontend content-corpus (updated 2026-10-24): positioning/core-positioning, positioning/offers, positioning/competitive-landscape, proof/case-studies, proof/testimonials, voice/voice-guide, voice/banned-phrases, voice/vocabulary, voice/content-hooks, seo/keyword-clusters. No new research. April 2026 ~/.claude ICP/audience files excluded: superseded positioning.",
+      "transcripts": []
+    }
+  },
+  "audienceResearch": {
+    "audienceState": {
+      "currentState": "The firm is good, and the people who already work with it know that. Everyone else is judging it from a website, a deck, and a logo that make it look smaller and newer than it is.",
+      "desiredState": "The brand is rebuilt around what is already true about the firm, so the first impression matches the firm a client meets six months in."
+    },
+    "urgencyGateway": {
+      "problem": "The gap: the distance between what a firm is and how it reads. Strangers make up their minds in about ninety seconds, from whatever the firm has put in front of them. When the presentation is weaker than the firm, those ninety seconds go against it.",
+      "whyUrgent": "The gap costs the firm money every quarter it stays open: work lost to competitors who are worse at the job but look more established, over-explaining in every pitch, and discounting to compensate.",
+      "failedSolutions": [
+        "Small brand studios: good craft, often strong visual work, but they usually start from a style and fit the client into it. Strategy is light or borrowed.",
+        "Freelance designers: they execute a brief; they don't write it. The firm still has to know what's true about itself, and most don't.",
+        "Marketing agencies: brand is treated as a logo refresh on the way to the retainer.",
+        "Doing it in-house: a partner writes the copy, someone's nephew does the logo, an AI tool fills the gaps. Fast and cheap, and it reads that way.",
+        "Borrowed language: positioning copied from bigger firms because it felt safer, which makes the firm sound like everyone else."
+      ],
+      "aspirinSolution": "A correction built by excavation: find the dissonance between what the firm says and what it is, dig for what's actually true through a long conversation, cut until only that's left, then build the identity, image world, site, and system around it so the team can live inside it."
+    },
+    "painPoints": [
+      {
+        "pain": "Losing work to competitors who are worse at the job but look more established",
+        "severity": "critical",
+        "emotionalContext": "You watch worse firms win the work because they look like they've been doing it longer.",
+        "realQuotes": []
+      },
+      {
+        "pain": "Over-explaining in every pitch",
+        "severity": "moderate",
+        "emotionalContext": "Making up for a first impression that undersold the firm.",
+        "realQuotes": []
+      },
+      {
+        "pain": "Discounting to compensate",
+        "severity": "critical",
+        "emotionalContext": "Getting priced like a commodity because the presentation undersold the firm.",
+        "realQuotes": []
+      },
+      {
+        "pain": "Borrowed language",
+        "severity": "moderate",
+        "emotionalContext": "Positioning copied from bigger firms because it felt safer makes the firm sound like everyone else.",
+        "realQuotes": []
+      },
+      {
+        "pain": "A presentation that reads newer and smaller than the firm is",
+        "severity": "critical",
+        "emotionalContext": "You know what you're capable of. Your clients know it after six months. The people who haven't met you yet are deciding in ninety seconds, from a website you've been meaning to fix.",
+        "realQuotes": []
+      }
+    ],
+    "languageMap": {
+      "painPhrases": [
+        "a website you've been meaning to fix",
+        "So you over-explain. You discount to compensate.",
+        "You watch worse firms win the work because they look like they've been doing it longer.",
+        "their presentation said they were new",
+        "look smaller and newer than it is"
+      ],
+      "desirePhrases": [
+        "stop looking smaller than you are",
+        "the first impression matches the firm a client meets six months in",
+        "looked like a firm with a history",
+        "a brand the team can live inside"
+      ],
+      "searchPhrases": [
+        {
+          "phrase": "brand identity for professional services firms",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 1, cluster brand-gap"
+        },
+        {
+          "phrase": "when to rebrand a consulting firm",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 1, cluster brand-gap"
+        },
+        {
+          "phrase": "brand strategy for founders",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 2, cluster brand-strategy"
+        },
+        {
+          "phrase": "positioning for consulting and advisory firms",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 2, cluster brand-strategy"
+        },
+        {
+          "phrase": "brand voice guide",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 3, cluster brand-voice"
+        },
+        {
+          "phrase": "AI content that sounds like the brand",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 3, cluster brand-voice"
+        },
+        {
+          "phrase": "creative direction for small teams",
+          "estimatedDemand": "unknown",
+          "context": "Pillar 4, cluster creative-direction"
+        }
+      ],
+      "emotionalTriggers": [
+        "the ninety seconds a stranger spends on the site",
+        "the pitch that went to a worse firm",
+        "the discount given to compensate"
+      ]
+    },
+    "congregationPoints": {
+      "tier1_mainstream": [],
+      "tier2_niche": [],
+      "tier3_micro": []
+    },
+    "marketingRecommendation": {
+      "primaryPlatform": {
+        "platform": "chadjordan.studio Journal (articles)",
+        "reasoning": "The approved content pillars and keyword clusters are written for the site's article engine.",
+        "contentFormats": [
+          "article"
+        ],
+        "postingCadence": "Not recorded in the approved brand files."
+      },
+      "secondaryPlatforms": [],
+      "contentStrategyTips": [
+        "Every piece targets one of the four pillars: the gap, brand strategy for founders, brand voice and AI, creative direction for small teams.",
+        "Use real proof from the brand context (Durindal, the credentials) instead of hypotheticals.",
+        "Concrete over abstract: name the specific loss or the specific win.",
+        "Default CTA is \"Start a conversation\" at /contact. Diagnosis and decision topics point to The Strategic Session; identity, voice, image, or site topics point to The Commission."
+      ],
+      "quickWin": "Not recorded in the approved brand files."
+    },
+    "competitiveLandscape": {
+      "existingSolutions": [
+        {
+          "name": "Small brand studios",
+          "positioning": "Craft-led studios that start from a style.",
+          "complaints": [],
+          "strengths": [
+            "Good craft, often strong visual work"
+          ],
+          "weaknesses": [
+            "Usually start from a style and fit the client into it",
+            "Strategy is light or borrowed"
+          ]
+        },
+        {
+          "name": "Freelance designers",
+          "positioning": "Affordable, fast execution of a brief.",
+          "complaints": [],
+          "strengths": [
+            "Affordable, fast, often talented"
+          ],
+          "weaknesses": [
+            "They execute a brief; they don't write it"
+          ]
+        },
+        {
+          "name": "Marketing agencies",
+          "positioning": "Campaigns and channels.",
+          "complaints": [],
+          "strengths": [
+            "Sell campaigns and channels"
+          ],
+          "weaknesses": [
+            "Brand is treated as a logo refresh on the way to the retainer"
+          ]
+        },
+        {
+          "name": "Doing it in-house",
+          "positioning": "Partners, relatives and AI tools filling the gaps.",
+          "complaints": [],
+          "strengths": [
+            "Fast and cheap"
+          ],
+          "weaknesses": [
+            "It reads that way"
+          ]
+        }
+      ],
+      "marketGaps": [
+        "Twenty years of agency-scale creative direction applied to firms that normally can't access that level of judgment.",
+        "A written brand brain: most firms, including most that have paid for branding, have never had one."
+      ],
+      "positioningOpportunities": [
+        "The excavation method: the brand comes out of what is already true about the firm. Most of the work is removal.",
+        "Built to be lived in: identity, image world, site, and the system that keeps it running come as one piece, so the team can use it daily.",
+        "Describe competitors' approaches plainly, never by name, never with contempt."
+      ]
+    }
+  },
+  "offerCore": {
+    "offerStatement": {
+      "finalStatement": "Stop looking smaller than you are.",
+      "emotionalCore": "The first impression matches the firm a client meets six months in.",
+      "universalMotivatorsUsed": [
+        "status: looking as established as the firm is",
+        "money: stop losing work and discounting to compensate"
+      ],
+      "templateUsed": "transformation"
+    },
+    "theOfferGivesYou": [
+      "The brand brain: everything true about the firm, written down: voice, positioning, proof, the words it will never say.",
+      "Identity: logo, type, color, and the rules for using them.",
+      "Image world: a visual DNA locked once, then applied for close to nothing per image after the first.",
+      "The site: built by hand as a commissioned piece, on infrastructure the client owns.",
+      "The system: content, capture, and the quiet automation that keeps it running."
+    ],
+    "youCanUseItTo": [
+      "Make the first impression match the firm a client meets six months in.",
+      "Stop over-explaining in pitches and discounting to compensate.",
+      "Judge whether a piece of creative, messaging, or positioning is on-brand, the way Durindal's team still does daily."
+    ],
+    "hiddenBenefits": [
+      "The brand brain is the document every other asset is built from, and the one almost nobody has.",
+      "Imagery stays on brand at close to no cost per image once the image world is locked."
+    ],
+    "programNameOptions": []
+  },
+  "narrative": {
+    "standingCopyRules": [
+      {
+        "title": "Offer names",
+        "body": "Use exactly: The Strategic Session ($1,500, ninety minutes, one-page brief within 48 hours, fee credited toward what comes next), The Commission (by commission), The Standing Engagement (monthly). \"The Compound\" is retired and must never appear as an offer."
+      },
+      {
+        "title": "X-not-Y limit",
+        "body": "Any sentence that sets up a thing only to deny it is allowed once per piece at most. State the point directly instead."
+      },
+      {
+        "title": "Plain sentences",
+        "body": "Most sentences simply say what's true, in order. One turn of phrase per section. No stock closers, no three-beat fragment closers, no exclamation points, no begging for the click."
+      },
+      {
+        "title": "Client facts are fixed",
+        "body": "About Durindal, state only the approved phrasings. Tactical Luxury had exactly four parts: an identity, an image world, a site, and a decision filter. Durindal was a DefenseTech go-to-market firm at the time (2024); never describe it as one today. Never describe the founders' thesis or the product."
+      },
+      {
+        "title": "Spec work is not client work",
+        "body": "NASA x Ralph Lauren, G-Shock and Panerai are spec campaigns; Porsche 928 is a personal exploration. Never imply these brands were clients."
+      },
+      {
+        "title": "Ownership in passing only",
+        "body": "The client owns what gets built. Mention it at most once, in passing. Website ownership, platforms and platform risk are never the topic of a piece."
+      },
+      {
+        "title": "Footer tagline",
+        "body": "\"Nothing invented. Everything excavated.\" belongs to the website footer. Don't reuse or paraphrase it in articles or posts."
+      },
+      {
+        "title": "Testimonials",
+        "body": "Quote exactly as written, at most one per article. Garrath's quote for brands teams use day to day; Sebastian's for pricing, outcomes and why brand work is worth paying for."
+      }
+    ],
+    "proofAsset": {
+      "body": "Credentials: 2x Webby National Honoree; 20+ years creative direction; 26M Thrillist video views; $2B+ brand revenue scale; senior creative lead at Inizio Evoke (top-10 global healthcare agency), member of its AI Trailblazers group; a decade with a real estate license overlapping the creative career.\n\nDurindal (Tactical Luxury): two founders and a thesis, no product yet, selling judgment to people who wire eight figures, and their presentation said they were new. They came in needing a website. We built Tactical Luxury: a complete identity, an image world, a site, and a decision filter. By the time we were finished they looked like a firm with a history. The team still uses the decision filter daily to judge whether a piece of creative, messaging, or positioning is on-brand. Durindal has since evolved into a product company. The identity carried through the transition. Full case study: /work/durindal.\n\n\"It feels alive because we can live it. It's like walking into a house.\" (Garrath L. Robinson, COO & Co-Founder, Durindal)\n\n\"Design that drives results is basically a form of engineering. Chad isn't the cheapest designer that way, and that's fine, because if you want outcomes over looks, even $25,000 is a bargain.\" (Sebastian D.P. Hidalgo, CSO & Co-Founder, Durindal)",
+      "caution": "Use the approved phrasings or faithful paraphrases only. Any cause, consequence, order of work, timeline, number, motive or new deliverable beyond them is not in the proof. Spec work (NASA x Ralph Lauren, G-Shock, Panerai, Porsche 928) is never client work."
+    },
+    "knownGaps": [
+      {
+        "title": "No customer research quotes",
+        "body": "Pain points come from the approved positioning, not interviews. realQuotes are empty on purpose."
+      },
+      {
+        "title": "No congregation points",
+        "body": "Where the audience gathers online is not recorded in the approved brand files."
+      },
+      {
+        "title": "No posting cadence or quick win",
+        "body": "Not recorded in the approved brand files."
+      },
+      {
+        "title": "No search-demand data",
+        "body": "Search phrases come from the keyword clusters; demand is unknown."
+      },
+      {
+        "title": "No programme-name options",
+        "body": "The three offers are live products with fixed names, so no strategic name options are listed."
+      }
+    ],
+    "neverSay": [
+      "fast, affordable, cheap, budget-friendly",
+      "template (as a virtue), turnkey, plug-and-play",
+      "\"get online quick\", \"websites made easy\"",
+      "stunning, breathtaking, epic, game-changing, revolutionary, cutting-edge, next-level, world-class, seamless (as filler)",
+      "elevate, unlock, supercharge, level up",
+      "\"bring your brand to life\", \"take your brand to the next level\"",
+      "\"In today's fast-paced digital landscape\", \"Now more than ever\", \"We're passionate about\"",
+      "\"own the house\", \"hold the deed\", \"your own gates\", \"stop renting\", \"rented ground\"",
+      "the Compound, Digital Compound, \"compounds for you\"; the verb compound / compounding in any sense",
+      "the gate, the vault, the press, the grounds",
+      "\"digital sovereignty\" in any public copy",
+      "platform risk, deplatforming, or website ownership as the subject of a piece"
+    ]
+  }
+}
