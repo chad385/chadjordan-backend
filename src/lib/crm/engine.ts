@@ -1,9 +1,10 @@
 import { logActivity } from "./activity";
-import { sendCrmEmail } from "./email";
+import { notifyOwner, sendCrmEmail } from "./email";
 import { getCrmSettings } from "./settings";
 import { renderMergeTags } from "./merge";
 import { recomputeLeadScores } from "./scoring";
 import { alertHotLeads } from "./alerts";
+import { alertNewLeads, NEW_LEAD_ALERT_TITLE } from "./new-lead-alerts";
 import { promoteSubjectTests } from "./abtest";
 import { sendBookingReminders } from "./bookings";
 import { runHealthChecks } from "./health";
@@ -44,6 +45,7 @@ export interface TickSummary {
   errors: string[];
   scores_updated: number;
   hot_leads_alerted: number;
+  new_leads_alerted: number;
   ab_tests_promoted: number;
   booking_reminders_sent: number;
 }
@@ -741,6 +743,7 @@ export async function runEngineTick(supabase: AdminClient, limit = 100): Promise
     errors: [],
     scores_updated: 0,
     hot_leads_alerted: 0,
+    new_leads_alerted: 0,
     ab_tests_promoted: 0,
     booking_reminders_sent: 0,
   };
@@ -853,6 +856,19 @@ export async function runEngineTick(supabase: AdminClient, limit = 100): Promise
       settings,
       summary
     );
+  }
+
+  // Tell the owner about every new lead. Like scoring, never fail the tick.
+  try {
+    const fresh = await alertNewLeads(supabase, {
+      notify: (subject, body) => notifyOwner(supabase, subject, body),
+      logAlert: (leadId) =>
+        logActivity(supabase, { lead_id: leadId, activity_type: "note", title: NEW_LEAD_ALERT_TITLE, actor: "system" }),
+    });
+    summary.new_leads_alerted = fresh.alerted;
+    summary.errors.push(...fresh.errors);
+  } catch (e) {
+    summary.errors.push(`new-lead alerts: ${e instanceof Error ? e.message : "unknown error"}`);
   }
 
   // Keep lead scores fresh on the same heartbeat — never let a scoring
