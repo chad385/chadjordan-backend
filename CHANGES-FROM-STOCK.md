@@ -229,4 +229,16 @@ database migration is part of this range.
   `allowImportingTsExtensions`.
 - `scripts/test-article-media.mjs` — test double extended with `.in()` and an
   empty `agent_logs` table so it exercises the custom writer.
-- `VERSION` stays `2.5.6` until the deploy is verified.
+- `VERSION` set to `2.9.0` after the verified deploy.
+
+**Deployed 2026-10-26 14:36 UTC** (approved by Chad): Worker `chadjordan-backend`
+version `0f90e058-5934-4eaa-836b-6133ff81bc1c` at 100%. Previous version
+`73fcf6fa-1921-4607-9502-c04f6d78aff6` (rollback target). Verified: preview and
+live media probe (storage, optimisation, public delivery), login 200, brand and
+media routes present, signed CRM leads read, Brand Playbook 1.0 published
+(7 projection rows, CTA ready). R2 bucket `chadjordan-public-media` created
+2026-10-26. `article_image_mode=automatic` and `cta/links` set in brand_context.
+
+Follow-ups: pin `PUBLIC_MEDIA_BASE`; migrate the 2 legacy-hero drafts (and
+optionally the 9 published heroes) to R2; port `scripts/regenerate-hero.ts`;
+audit frontend direct-publish routes.
