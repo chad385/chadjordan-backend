@@ -1,6 +1,6 @@
 # Assistant API
 
-A separate machine API for Chad's team assistants. It can save a brand-context draft, generate an image, and add a CRM lead. It cannot publish, schedule, change publish mode, open a deal, start a workflow, or send email.
+A separate machine API for Chad's team assistants. It can save a brand-context draft, generate an image, add a CRM lead, and attach a research note to a lead. It cannot publish, schedule, change publish mode, open a deal, start a workflow, or send email.
 
 The master key (`API_SECRET_KEY`) is not accepted. If `ASSISTANT_API_KEY` or `ASSISTANT_HMAC_SECRET` is unset, or if either value repeats the master key or master signing secret, every route returns **503** and does no work.
 
@@ -132,11 +132,17 @@ Request:
   "email": "ada@northledger.example",
   "website": "https://northledger.example",
   "source": "referral",
-  "notes": "Looked the studio up after an introduction."
+  "notes": "Looked the studio up after an introduction.",
+  "research_note": {
+    "title": "What the site says in ninety seconds",
+    "body": "The public page names the practice and nothing more.",
+    "source_urls": ["https://northledger.example/about"],
+    "kind": "research"
+  }
 }
 ```
 
-`name` and `email` are required.
+`name` and `email` are required. `notes` is still the short message stored like a contact-form note. `research_note` is optional and uses the same shape as `POST /api/assistant/leads/{id}/notes`. It is attached after the lead is saved, including when the lead already existed.
 
 Response `200`:
 
@@ -146,13 +152,54 @@ Response `200`:
   "created": true,
   "deduped": false,
   "matched_on": null,
+  "research_note": {
+    "note_id": "uuid",
+    "title": "Research: What the site says in ninety seconds",
+    "kind": "research"
+  },
   "workflow_started": false,
   "deal_created": false,
   "email_sent": false
 }
 ```
 
-`matched_on` is `email`, `company`, or `domain` when an existing lead was used.
+`research_note` is `null` when the request did not include one. `matched_on` is `email`, `company`, or `domain` when an existing lead was used.
+
+### `POST /api/assistant/leads/{id}/notes`
+
+Attaches a finding to an existing lead. Same key, HMAC, audit row, 32 KB body limit, and per-key rate limit as the other assistant routes. The note is a CRM timeline note (`activity_type: "note"`), the same record a contact-form message uses, so it shows on the lead page under Notes. The stored title is `Research: …` (or `Audit: …` when `kind` is `audit`). The actor line is `Created by assistant`. This call does not start a workflow, open a deal, or send email.
+
+Sign the full path, for example `/api/assistant/leads/11111111-1111-4111-8111-111111111111/notes`.
+
+Request:
+
+```json
+{
+  "title": "What the site says in ninety seconds",
+  "body": "The public page names the practice and nothing more.",
+  "source_urls": ["https://northledger.example/about"],
+  "kind": "research"
+}
+```
+
+`title` (1–180) and `body` (markdown, 1–20,000) are required. `kind` defaults to `research`. Use a short label such as `research` or `audit`. `source_urls` is optional, at most 8 http(s) URLs. They are listed at the end of the note body.
+
+Response `201`:
+
+```json
+{
+  "note_id": "uuid",
+  "lead_id": "uuid",
+  "title": "Research: What the site says in ninety seconds",
+  "kind": "research",
+  "actor": "Created by assistant",
+  "workflow_started": false,
+  "deal_created": false,
+  "email_sent": false
+}
+```
+
+Unknown or malformed lead ids return **404**.
 
 ### `GET /api/assistant/leads/lookup`
 
@@ -209,8 +256,10 @@ async function assistant(method, path, body) {
   return response.json();
 }
 
-await assistant("POST", "/api/assistant/drafts", {
-  title: "What a referral buyer sees in ninety seconds",
+await assistant("POST", "/api/assistant/leads/11111111-1111-4111-8111-111111111111/notes", {
+  title: "What the site says in ninety seconds",
+  body: "The public page names the practice and nothing more.",
+  kind: "research",
 });
 ```
 

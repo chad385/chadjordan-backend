@@ -1,4 +1,5 @@
 import { ASSISTANT_AUTHOR_NAME } from "./constants.ts";
+import { parseResearchNote, type ResearchNote } from "./research-note.ts";
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -144,6 +145,7 @@ export interface LeadRequest {
   website?: string;
   source?: string;
   notes?: string;
+  research_note?: ResearchNote;
 }
 
 export function isEmail(value: string): boolean {
@@ -153,7 +155,7 @@ export function isEmail(value: string): boolean {
 export function parseLeadRequest(body: Record<string, unknown>): Parsed<LeadRequest> {
   const blocked = rejectBlocked(body);
   if (blocked) return { ok: false, error: blocked };
-  const unknown = unknownKeys(body, ["name", "company", "email", "website", "source", "notes"]);
+  const unknown = unknownKeys(body, ["name", "company", "email", "website", "source", "notes", "research_note"]);
   if (unknown) return { ok: false, error: unknown };
 
   const name = requiredString(body.name, "name", 1, 160);
@@ -174,6 +176,12 @@ export function parseLeadRequest(body: Record<string, unknown>): Parsed<LeadRequ
   if (!source.ok) return source;
   const notes = optionalString(body.notes, "notes", 4000);
   if (!notes.ok) return notes;
+  let research_note: ResearchNote | undefined;
+  if (body.research_note !== undefined && body.research_note !== null) {
+    const parsedNote = parseResearchNote(body.research_note);
+    if (!parsedNote.ok) return parsedNote;
+    research_note = parsedNote.value;
+  }
 
   return {
     ok: true,
@@ -184,6 +192,7 @@ export function parseLeadRequest(body: Record<string, unknown>): Parsed<LeadRequ
       website: website.value,
       source: source.value,
       notes: notes.value,
+      research_note,
     },
   };
 }

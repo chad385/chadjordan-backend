@@ -3,6 +3,7 @@ import test from "node:test";
 import { signRequestPayload, requestSigningPayload } from "../api/signature.ts";
 import { authenticateAssistantHeaders, readAssistantCredentials } from "./auth.ts";
 import { listLeadMatches, pickLeadMatch } from "./leads-match.ts";
+import { leadIdFromNotesPath, parseResearchNote, researchActivity } from "./research-note.ts";
 import {
   BLOCKED_MUTATION_FIELDS,
   buildDraftInsert,
@@ -115,6 +116,42 @@ test("lead input rejects workflow and deal fields", () => {
   assert.equal(parsed.ok, true);
   const lookup = parseLookupRequest(new URLSearchParams({ email: "ada@northledger.example" }));
   assert.equal(lookup.ok, true);
+});
+
+test("research notes are timeline notes labeled Research and created by assistant", () => {
+  const parsed = parseResearchNote({
+    title: "What the site says in ninety seconds",
+    body: "The public page names the practice and nothing more.",
+    source_urls: ["https://northledger.example/about"],
+    kind: "research",
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const activity = researchActivity(parsed.value);
+  assert.equal(activity.activity_type, "note");
+  assert.equal(activity.title, "Research: What the site says in ninety seconds");
+  assert.equal(activity.actor, "Created by assistant");
+  assert.match(activity.body, /Sources:\n- https:\/\/northledger.example\/about/);
+  assert.equal(activity.data.kind, "research");
+  assert.deepEqual(Object.keys(activity).sort(), ["activity_type", "actor", "body", "data", "title"]);
+
+  const audit = parseResearchNote({ title: "Sample", body: "Notes.", kind: "audit" });
+  assert.equal(audit.ok, true);
+  if (audit.ok) assert.equal(researchActivity(audit.value).title, "Audit: Sample");
+
+  assert.equal(parseResearchNote({ title: "Sample", body: "Notes." }).ok, true);
+  assert.equal(parseResearchNote({ title: "Sample", body: "Notes.", source_urls: ["javascript:alert(1)"] }).ok, false);
+  assert.equal(parseResearchNote({ title: "Sample", body: "Notes.", workflow_id: "wf" }).ok, false);
+  assert.equal(leadIdFromNotesPath("/api/assistant/leads/11111111-1111-4111-8111-111111111111/notes"), "11111111-1111-4111-8111-111111111111");
+  assert.equal(leadIdFromNotesPath("/api/assistant/leads/not-a-lead/notes"), null);
+
+  const withNote = parseLeadRequest({
+    name: "Ada Quinn",
+    email: "ada@northledger.example",
+    research_note: { title: "Lookup", body: "Quiet site." },
+  });
+  assert.equal(withNote.ok, true);
+  if (withNote.ok) assert.equal(withNote.value.research_note?.kind, "research");
 });
 
 test("lead matching prefers email, then company, then an organizational domain", () => {
