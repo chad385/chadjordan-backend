@@ -1,0 +1,257 @@
+# Assistant API
+
+A separate machine API for Chad's team assistants. It can save a brand-context draft, generate an image, and add a CRM lead. It cannot publish, schedule, change publish mode, open a deal, start a workflow, or send email.
+
+The master key (`API_SECRET_KEY`) is not accepted. If `ASSISTANT_API_KEY` or `ASSISTANT_HMAC_SECRET` is unset, or if either value repeats the master key or master signing secret, every route returns **503** and does no work.
+
+## Authentication
+
+Every request, including GET, sends:
+
+| Header | Value |
+| --- | --- |
+| `x-api-key` | `ASSISTANT_API_KEY` |
+| `x-timestamp` | Unix seconds |
+| `x-signature` | Hex HMAC-SHA256 of the payload |
+
+Payload, same helper the rest of the machine API uses:
+
+```text
+METHOD:pathname:timestamp:body
+```
+
+- Method is uppercase.
+- `pathname` is the path only. The query string is not signed.
+- GET body is an empty string.
+- The timestamp must fall inside `API_REQUEST_SIGNATURE_TTL_SECONDS` (default 300). `API_SIGNATURE_REQUIRED=false` does not turn this check off.
+
+A wrong key or signature is **401**. Bodies over 32 KB are **413**. Each assistant key is limited to 20 requests per 15 minutes (**429**). The limit is counted from `assistant_api_audit`.
+
+## Endpoints
+
+Base URL is the backend origin, for example `https://chadjordan-backend.chad-1a0.workers.dev`.
+
+### `POST /api/assistant/drafts`
+
+The backend writes the article from the live `brand_context` playbook projection. The caller does not send HTML. The row is always `status: "draft"`, `published_at: null`, and `author_name: "Editorial draft"`. That byline is a neutral internal value. The route never publishes, never writes `content_calendar`, and never changes `publish_mode`.
+
+Request:
+
+```json
+{
+  "title": "What a referral buyer sees in ninety seconds",
+  "brief": "Optional topic notes. Instructions to publish are ignored.",
+  "target_keyword": "reputation and the first lookup",
+  "pillar": "reputation and the first lookup"
+}
+```
+
+`title` is required (4–180 characters). `brief` max 4,000. `target_keyword` max 120. `pillar` max 160.
+
+Response `201`:
+
+```json
+{
+  "draft": {
+    "id": "uuid",
+    "slug": "what-a-referral-buyer-sees-in-ninety-seconds",
+    "title": "What a referral buyer sees in ninety seconds",
+    "status": "draft",
+    "author_name": "Editorial draft",
+    "public": false
+  },
+  "review": {
+    "unsupported_claims": [],
+    "editor_error": null
+  }
+}
+```
+
+Needs `ANTHROPIC_API_KEY` and a ready playbook projection. Otherwise **503** and nothing is stored.
+
+### `GET /api/assistant/drafts`
+
+Lists drafts this API stored (`author_name` is `Editorial draft`, status is still `draft`). `?limit=` is 1–50, default 20.
+
+Response `200`:
+
+```json
+{
+  "drafts": [
+    {
+      "id": "uuid",
+      "slug": "what-a-referral-buyer-sees-in-ninety-seconds",
+      "title": "What a referral buyer sees in ninety seconds",
+      "status": "draft",
+      "created_at": "2026-11-24T17:00:00Z",
+      "updated_at": "2026-11-24T17:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /api/assistant/images`
+
+Generates an image with the configured OpenAI image model and the brand image style. Returns the public media URL. Attaches it to a draft's `featured_image_url` only when that row is still a draft and `attach` is not `false`. A published row is never updated. Status is never changed.
+
+Request (one of `draft_id` or `prompt`):
+
+```json
+{
+  "draft_id": "uuid",
+  "prompt": "A quiet archive table, one folder, no readable text",
+  "attach": true
+}
+```
+
+`prompt` max 2,000 characters.
+
+Response `200`:
+
+```json
+{
+  "url": "https://backend.example/media/public/blog/draft-….webp",
+  "draft_id": "uuid",
+  "attached": true,
+  "published": false
+}
+```
+
+Needs `OPENAI_API_KEY`, the public media bucket, and the `IMAGES` binding. A prompt-only request does not create an article.
+
+### `POST /api/assistant/leads`
+
+Inserts a lead with workflow triggers, deal creation, and automatic email left off. Existing email matches update the same lead. An exact company name, or the same organizational email domain, also updates the existing lead instead of inserting another. Free-mail domains (gmail, outlook, and the like) are not treated as a company match.
+
+Request:
+
+```json
+{
+  "name": "Ada Quinn",
+  "company": "North Ledger",
+  "email": "ada@northledger.example",
+  "website": "https://northledger.example",
+  "source": "referral",
+  "notes": "Looked the studio up after an introduction."
+}
+```
+
+`name` and `email` are required.
+
+Response `200`:
+
+```json
+{
+  "lead_id": "uuid",
+  "created": true,
+  "deduped": false,
+  "matched_on": null,
+  "workflow_started": false,
+  "deal_created": false,
+  "email_sent": false
+}
+```
+
+`matched_on` is `email`, `company`, or `domain` when an existing lead was used.
+
+### `GET /api/assistant/leads/lookup`
+
+Read-only. At least one of `email`, `company`, `website`, or `domain`.
+
+```text
+GET /api/assistant/leads/lookup?email=ada@northledger.example
+```
+
+Sign the path `/api/assistant/leads/lookup` with an empty body. Do not include the query string in the signature.
+
+Response `200`:
+
+```json
+{
+  "exists": true,
+  "matches": [
+    {
+      "id": "uuid",
+      "email": "ada@northledger.example",
+      "company": "North Ledger",
+      "matched_on": "email"
+    }
+  ]
+}
+```
+
+## Signing example
+
+Node:
+
+```js
+import { createHmac } from "node:crypto";
+
+const key = process.env.ASSISTANT_API_KEY;
+const secret = process.env.ASSISTANT_HMAC_SECRET;
+const base = process.env.BACKEND_URL.replace(/\/$/, "");
+
+async function assistant(method, path, body) {
+  const bodyText = body === undefined ? "" : JSON.stringify(body);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const payload = [method, path, timestamp, bodyText].join(":");
+  const signature = createHmac("sha256", secret).update(payload).digest("hex");
+  const response = await fetch(base + path, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "x-timestamp": timestamp,
+      "x-signature": signature,
+    },
+    body: bodyText || undefined,
+  });
+  return response.json();
+}
+
+await assistant("POST", "/api/assistant/drafts", {
+  title: "What a referral buyer sees in ninety seconds",
+});
+```
+
+curl (empty GET body; set the three variables first):
+
+```bash
+PATHNAME=/api/assistant/leads/lookup
+QUERY='?email=ada@northledger.example'
+TS=$(date +%s)
+SIG=$(node -e 'const {createHmac}=require("node:crypto"); const [method,path,ts]=process.argv.slice(1); process.stdout.write(createHmac("sha256", process.env.ASSISTANT_HMAC_SECRET).update([method,path,ts,""].join(":")).digest("hex"))' GET "$PATHNAME" "$TS")
+curl -sS "$BACKEND_URL$PATHNAME$QUERY" \
+  -H "x-api-key: $ASSISTANT_API_KEY" \
+  -H "x-timestamp: $TS" \
+  -H "x-signature: $SIG"
+```
+
+## Environment variables
+
+Set these on the **Cloudflare Worker** with `wrangler secret put`. Paste the value only. Do not put them in `wrangler.jsonc` and do not commit them.
+
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `ASSISTANT_API_KEY` | Cloudflare secret, and gitignored `.env.local` for local dev | Assistant `x-api-key`. Must differ from `API_SECRET_KEY`. |
+| `ASSISTANT_HMAC_SECRET` | Cloudflare secret, and `.env.local` | HMAC secret for assistant requests. Must differ from `API_SECRET_KEY` and from `API_REQUEST_SIGNING_SECRET`. |
+| `API_REQUEST_SIGNATURE_TTL_SECONDS` | Already used by the machine API. Optional. Default 300. | Shared timestamp window. |
+| `ANTHROPIC_API_KEY` | Already a Worker secret | Required for `POST /api/assistant/drafts` and for image subjects chosen from a draft. |
+| `OPENAI_API_KEY` | Already a Worker secret | Required for `POST /api/assistant/images`. |
+| `OPENAI_IMAGE_MODEL` | Already a Worker var | Image model. Defaults to `gpt-image-1` when unset. |
+
+**Supabase does not store these keys.** Supabase holds the audit table and the brand rows.
+
+## What has to be applied in Supabase
+
+1. Run `supabase/migrations/003_assistant_api_audit.sql` in the SQL editor or with the Supabase CLI. Until that table exists, an authenticated call returns **503** and does not write a draft, image, or lead.
+2. Publish the repositioned playbook so topic research and drafts read the new audience. Dry-run first:
+
+```bash
+node --experimental-strip-types scripts/seed-brand-playbook.ts
+node --env-file=.env.local --experimental-strip-types scripts/seed-brand-playbook.ts --apply
+```
+
+`--apply` writes `backend_settings` key `brand_playbook:current` and the `brand_context` projection. It archives the previous current row. Do not point `.env.local` at production unless you intend to replace the live playbook.
+
+The dashboard shows **Created by assistant** on a draft whose byline is `Editorial draft`. Publishing that draft is still a human action in the dashboard; this API will not do it. Set the public byline before a person publishes.

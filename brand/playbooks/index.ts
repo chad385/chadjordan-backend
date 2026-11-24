@@ -22,6 +22,7 @@
  * how your thinking changed over time.
  */
 import current from '../playbook.json';
+import expertFirms20261026 from './2026-10-26-expert-firms.json';
 
 export type NarrativeNote = { title: string; body: string };
 type Quote = { text: string; source: string; url?: string };
@@ -143,8 +144,11 @@ export function isPlaybook(value: unknown): value is Playbook {
 /** Newest first — the order the shelf is read in. */
 export const PLAYBOOKS: PlaybookEntry[] = [
   ...(isPlaybook(current) ? [{ slug: 'current', playbook: current }] : []),
-  // Archived playbooks go here, newest first:
-  // { slug: '2026-08-19-acme', playbook: acme20260819 as unknown as Playbook },
+  // Archived playbooks, newest first. The 2026-10-26 file is the previous
+  // expert-firm positioning, kept as the shelf record and not edited.
+  ...(isPlaybook(expertFirms20261026)
+    ? [{ slug: '2026-10-26-expert-firms', playbook: expertFirms20261026 }]
+    : []),
 ];
 
 export function getPlaybook(slug: string): Playbook | undefined {
