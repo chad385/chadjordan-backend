@@ -862,8 +862,9 @@ export async function runEngineTick(supabase: AdminClient, limit = 100): Promise
   try {
     const fresh = await alertNewLeads(supabase, {
       notify: (subject, body) => notifyOwner(supabase, subject, body),
-      logAlert: (leadId) =>
-        logActivity(supabase, { lead_id: leadId, activity_type: "note", title: NEW_LEAD_ALERT_TITLE, actor: "system" }),
+      logAlert: async (leadId) => {
+        await logActivity(supabase, { lead_id: leadId, activity_type: "note", title: NEW_LEAD_ALERT_TITLE, actor: "system" });
+      },
     });
     summary.new_leads_alerted = fresh.alerted;
     summary.errors.push(...fresh.errors);

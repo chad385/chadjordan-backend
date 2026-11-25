@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { RichEditor } from '@/components/rich-editor';
+import { ASSISTANT_AUTHOR_NAME } from '@/lib/assistant/constants';
 
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -221,6 +222,12 @@ export default function ArticleEditorPage() {
               {article.status}
             </span>
           </div>
+          {article.author_name === ASSISTANT_AUTHOR_NAME && (
+            <>
+              <div className="h-4 w-px bg-minimal-border" />
+              <span className="text-xs font-medium text-minimal-muted">Created by assistant</span>
+            </>
+          )}
           {article.published_at && (
             <>
               <div className="h-4 w-px bg-minimal-border" />
@@ -335,7 +342,16 @@ export default function ArticleEditorPage() {
                   <MetaRow label="Slug" value={article.slug} />
                   <MetaRow label="Type" value={article.content_type} />
                   <MetaRow label="Author" value={article.author_name} />
-                  <MetaRow label="Source" value={article.created_by === 'content_agent' ? 'Agent' : 'Human'} />
+                  <MetaRow
+                    label="Source"
+                    value={
+                      article.author_name === ASSISTANT_AUTHOR_NAME
+                        ? 'Created by assistant'
+                        : article.created_by === 'content_agent'
+                          ? 'Agent'
+                          : 'Human'
+                    }
+                  />
                   <MetaRow label="Words" value={wordCount(article.body).toLocaleString()} />
                 </MetaSection>
 

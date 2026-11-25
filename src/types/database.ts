@@ -2283,6 +2283,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      assistant_api_audit: {
+        Row: {
+          id: string;
+          created_at: string;
+          key_id: string;
+          method: string;
+          path: string;
+          action: string;
+          status_code: number;
+          target_table: string | null;
+          target_id: string | null;
+          request_bytes: number | null;
+          error: string | null;
+          metadata: Json;
+        };
+        Insert: {
+          id?: string;
+          created_at?: string;
+          key_id: string;
+          method: string;
+          path: string;
+          action: string;
+          status_code: number;
+          target_table?: string | null;
+          target_id?: string | null;
+          request_bytes?: number | null;
+          error?: string | null;
+          metadata?: Json;
+        };
+        Update: {
+          id?: string;
+          created_at?: string;
+          key_id?: string;
+          method?: string;
+          path?: string;
+          action?: string;
+          status_code?: number;
+          target_table?: string | null;
+          target_id?: string | null;
+          request_bytes?: number | null;
+          error?: string | null;
+          metadata?: Json;
+        };
+        Relationships: [];
+      };
       funnel_events: {
         Row: {
           id: string;

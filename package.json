@@ -19,6 +19,7 @@
     "test:image": "node --experimental-strip-types --test src/lib/content/image.test.ts",
     "regenerate:hero": "node --env-file=.env.local --experimental-strip-types scripts/regenerate-hero.ts",
     "test:brand": "node --experimental-strip-types --test src/lib/brand/*.test.ts",
+    "test:assistant": "node --experimental-strip-types --test src/lib/assistant/*.test.ts src/lib/api/signature.test.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
