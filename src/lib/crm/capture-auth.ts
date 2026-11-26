@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { authenticateSessionOrApiKey } from "@/lib/api/auth";
+import { fixedEqual } from "@/lib/api/signature";
 import { getCrmSettings } from "./settings";
 import type { AdminClient } from "./types";
 
@@ -17,13 +18,13 @@ export async function authenticateCapture(
   const captureKey = request.headers.get("x-capture-key");
   if (captureKey) {
     const settings = await getCrmSettings(supabase);
-    if (settings.capture_key && captureKey === settings.capture_key) {
+    if (settings.capture_key && fixedEqual(settings.capture_key, captureKey)) {
       return { ok: true, via: "capture-key" };
     }
     // Funnel workers (digital-home-funnel-starter) hold one secret and
     // send it to both the ingest and capture doors; accept the funnel
     // secret here so members configure a single value.
-    if (settings.funnel_secret && captureKey === settings.funnel_secret) {
+    if (settings.funnel_secret && fixedEqual(settings.funnel_secret, captureKey)) {
       return { ok: true, via: "funnel-secret" };
     }
     return { ok: false, via: "capture-key" };
@@ -45,7 +46,7 @@ export async function authenticateFunnelIngest(
   const funnelSecret = request.headers.get("x-funnel-secret");
   if (funnelSecret) {
     const settings = await getCrmSettings(supabase);
-    if (settings.funnel_secret && funnelSecret === settings.funnel_secret) {
+    if (settings.funnel_secret && fixedEqual(settings.funnel_secret, funnelSecret)) {
       return { ok: true, via: "funnel-secret" };
     }
     return { ok: false, via: "funnel-secret" };

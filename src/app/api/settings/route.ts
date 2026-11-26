@@ -59,12 +59,22 @@ export async function GET(request: NextRequest) {
 
   const settings: Record<string, unknown> = { ...DEFAULTS };
   for (const row of data || []) {
+    if (row.key === "crm_capture_key") {
+      const value = typeof row.value === "string" ? row.value : "";
+      settings.crm_capture_key_set = value.length > 0;
+      settings.crm_capture_key_masked = value ? `••••${value.slice(-4)}` : "";
+      continue;
+    }
     settings[row.key] = row.value;
   }
 
   return NextResponse.json({
     settings,
     digital_home_url: process.env.DIGITAL_HOME_URL || process.env.NEXT_PUBLIC_DIGITAL_HOME_URL || '',
+    delivery: {
+      safe_mode: settings.crm_safe_mode !== false,
+      resend_configured: Boolean(process.env.RESEND_API_KEY),
+    },
   });
 }
 
@@ -108,5 +118,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ success: true, key, value });
+  const hidden = key === "crm_capture_key" || key === "crm_funnel_secret";
+  return NextResponse.json({ success: true, key, value: hidden ? undefined : value });
 }

@@ -14,7 +14,14 @@ import {
   useToast,
 } from '@/components/crm/kit';
 
-type Sender = { from_name: string; from_email: string; reply_to?: string; address?: string };
+type Sender = {
+  from_name: string;
+  from_email: string;
+  reply_to?: string;
+  address?: string;
+  alert_from_email?: string;
+};
+type Delivery = { safe_mode: boolean; resend_configured: boolean };
 type SendWindow = { enabled: boolean; start_hour: number; end_hour: number; timezone: string; days: number[] };
 type FieldDef = { id: string; key: string; label: string; field_type: string; options: string[]; sort_order: number };
 type Tag = { id: string | null; name: string; color: string | null; count: number };
@@ -35,7 +42,11 @@ export default function CrmSettingsPage() {
     timezone: 'UTC',
     days: [1, 2, 3, 4, 5],
   });
-  const [captureKey, setCaptureKey] = useState<string>('');
+  const [captureMasked, setCaptureMasked] = useState('');
+  const [captureSet, setCaptureSet] = useState(false);
+  const [captureRevealed, setCaptureRevealed] = useState<string | null>(null);
+  const [newLeadAlerts, setNewLeadAlerts] = useState(false);
+  const [resendConfigured, setResendConfigured] = useState(true);
   const [fields, setFields] = useState<FieldDef[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
@@ -43,20 +54,29 @@ export default function CrmSettingsPage() {
   const load = useCallback(async () => {
     try {
       const [settingsRes, fieldsRes, tagsRes, pipeRes] = await Promise.all([
-        api<{ settings: Record<string, unknown> }>('/api/settings'),
+        api<{ settings: Record<string, unknown>; delivery?: Delivery }>('/api/settings'),
         api<{ fields: FieldDef[] }>('/api/crm/fields'),
         api<{ tags: Tag[] }>('/api/crm/tags'),
         api<{ pipelines: Pipeline[] }>('/api/crm/pipelines'),
       ]);
       const s = settingsRes.settings;
       if (s.crm_sender && typeof s.crm_sender === 'object') {
-        const base: Sender = { from_name: '', from_email: '' };
+        const base: Sender = {
+          from_name: 'Chad Jordan Studio',
+          from_email: 'hello@chadjordan.studio',
+          reply_to: 'hello@chadjordan.studio',
+          alert_from_email: 'alerts@chadjordan.studio',
+        };
         setSender(Object.assign(base, s.crm_sender as Partial<Sender>));
       }
       setSafeMode(s.crm_safe_mode !== false);
+      setResendConfigured(settingsRes.delivery?.resend_configured !== false);
+      setNewLeadAlerts(s.crm_new_lead_alerts === true);
+      setCaptureSet(s.crm_capture_key_set === true);
+      setCaptureMasked(typeof s.crm_capture_key_masked === 'string' ? s.crm_capture_key_masked : '');
+      setCaptureRevealed(null);
       if (s.crm_send_window && typeof s.crm_send_window === 'object')
         setSendWindow((w) => ({ ...w, ...(s.crm_send_window as SendWindow) }));
-      if (typeof s.crm_capture_key === 'string') setCaptureKey(s.crm_capture_key);
       setFields(fieldsRes.fields);
       setTags(tagsRes.tags);
       setPipeline(pipeRes.pipelines.find((p) => p.is_default) || pipeRes.pipelines[0] || null);
@@ -98,6 +118,17 @@ export default function CrmSettingsPage() {
           <section className="border border-minimal-border rounded-lg p-6 flex flex-col gap-4">
             <h2 className="text-[13px] font-semibold text-zinc-300">Email sending</h2>
 
+            {(safeMode || !resendConfigured) && (
+              <div className="px-4 py-3 border-2 border-amber-400 bg-amber-500/15 rounded-lg">
+                <p className="text-sm font-semibold text-amber-200">Sends are not delivered</p>
+                <p className="text-[13px] text-amber-100 mt-1 leading-relaxed">
+                  {safeMode ? 'Safe mode is on. ' : ''}
+                  {!resendConfigured ? 'RESEND_API_KEY is not set on the worker. ' : ''}
+                  A send from a lead is logged on the timeline and does not go out.
+                </p>
+              </div>
+            )}
+
             <div
               className={`px-4 py-3 border rounded-lg flex items-center justify-between ${
                 safeMode ? 'border-yellow-500/20 bg-yellow-500/5' : 'border-green-500/20 bg-green-500/5'
@@ -128,18 +159,42 @@ export default function CrmSettingsPage() {
               <Field label="From name">
                 <TextInput value={sender.from_name} onChange={(e) => setSender({ ...sender, from_name: e.target.value })} />
               </Field>
-              <Field label="From email" hint="Domain must be verified in Resend">
+              <Field label="From email" hint="Lead emails. Default hello@chadjordan.studio. Domain must be verified in Resend.">
                 <TextInput value={sender.from_email} onChange={(e) => setSender({ ...sender, from_email: e.target.value })} />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
+              <Field label="Alert from" hint="New-lead, tick-failure and heartbeat mail. Stays alerts@chadjordan.studio.">
+                <TextInput
+                  value={sender.alert_from_email || ''}
+                  onChange={(e) => setSender({ ...sender, alert_from_email: e.target.value })}
+                />
+              </Field>
               <Field label="Reply-to">
                 <TextInput value={sender.reply_to || ''} onChange={(e) => setSender({ ...sender, reply_to: e.target.value })} />
               </Field>
-              <Field label="Physical address" hint="Shown in the footer (anti-spam law)">
-                <TextInput value={sender.address || ''} onChange={(e) => setSender({ ...sender, address: e.target.value })} />
-              </Field>
             </div>
+            <Field label="Physical address" hint="Shown in the footer. Alerts go to Reply-to.">
+              <TextInput value={sender.address || ''} onChange={(e) => setSender({ ...sender, address: e.target.value })} />
+            </Field>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newLeadAlerts}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setNewLeadAlerts(next);
+                  saveSetting(
+                    'crm_new_lead_alerts',
+                    next,
+                    next ? 'New-lead alerts on' : 'New-lead alerts off'
+                  );
+                }}
+              />
+              <span className="text-[13px] text-zinc-400">
+                Email me when a lead is added, whether it came from the site or the assistant.
+              </span>
+            </label>
             <div className="flex justify-end">
               <PrimaryBtn onClick={() => saveSetting('crm_sender', sender, 'Sender saved')}>Save sender</PrimaryBtn>
             </div>
@@ -221,19 +276,34 @@ export default function CrmSettingsPage() {
               <code className="text-zinc-300">POST /api/crm/capture</code> with the{' '}
               <code className="text-zinc-300">x-capture-key</code> header:
             </p>
-            {captureKey ? (
+            {captureSet || captureRevealed ? (
               <div className="flex items-center gap-3">
                 <code className="flex-1 text-[13px] text-zinc-300 bg-minimal-row border border-minimal-border rounded-lg px-3 py-2 break-all">
-                  {captureKey}
+                  {captureRevealed || captureMasked || '••••'}
                 </code>
-                <GhostBtn
-                  onClick={() => {
-                    navigator.clipboard.writeText(captureKey);
-                    show('Copied');
-                  }}
-                >
-                  Copy
-                </GhostBtn>
+                {captureRevealed ? (
+                  <GhostBtn
+                    onClick={() => {
+                      navigator.clipboard.writeText(captureRevealed);
+                      show('Copied');
+                    }}
+                  >
+                    Copy
+                  </GhostBtn>
+                ) : (
+                  <GhostBtn
+                    onClick={async () => {
+                      try {
+                        const res = await api<{ capture_key: string }>('/api/settings/capture-key');
+                        setCaptureRevealed(res.capture_key);
+                      } catch (e) {
+                        show(e instanceof Error ? e.message : 'Could not reveal the key', 'err');
+                      }
+                    }}
+                  >
+                    Reveal
+                  </GhostBtn>
+                )}
               </div>
             ) : (
               <GhostBtn
@@ -241,7 +311,9 @@ export default function CrmSettingsPage() {
                   const key = Array.from(crypto.getRandomValues(new Uint8Array(24)))
                     .map((b) => b.toString(16).padStart(2, '0'))
                     .join('');
-                  setCaptureKey(key);
+                  setCaptureSet(true);
+                  setCaptureRevealed(key);
+                  setCaptureMasked(`••••${key.slice(-4)}`);
                   saveSetting('crm_capture_key', key, 'Capture key generated');
                 }}
               >

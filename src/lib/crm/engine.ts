@@ -137,11 +137,11 @@ export async function enrollLead(
     data: { workflow_id: workflow.id, source },
   });
 
-  // A lead in an email sequence belongs in the Nurturing stage of the sales
+  // A lead in an email sequence belongs in the Audit sent stage of the sales
   // pipeline. Forward-only (never drags a later-stage deal back), and must
   // never fail an enrollment over a pipeline write.
   try {
-    await ensureLeadOpportunity(supabase, lead, { stage: "Nurturing", actor: `workflow:${workflow.id}` });
+    await ensureLeadOpportunity(supabase, lead, { stage: "Audit sent", actor: `workflow:${workflow.id}` });
   } catch (e) {
     console.error("enrollLead: ensureLeadOpportunity failed", e);
   }
@@ -179,7 +179,7 @@ export interface EnsureOppResult {
 
 /**
  * Ensures a lead has an open opportunity in the sales pipeline. Idempotent:
- *   - no open deal  → creates one in the target stage (default: first stage / "New")
+ *   - no open deal  → creates one in the target stage (default: first stage / "Researched")
  *   - open deal in an EARLIER stage than the target → advances it forward
  *   - open deal already at/after the target → left untouched
  *

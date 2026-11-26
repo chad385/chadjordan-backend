@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { noteSectionKind, notesForSection } from "./note-sections.ts";
+import { noteSectionKind, notesForSection, outreachDraft } from "./note-sections.ts";
 
 test("audit and outreach notes are separated and ordered oldest first", () => {
   const notes = [
@@ -14,4 +14,12 @@ test("audit and outreach notes are separated and ordered oldest first", () => {
   assert.deepEqual(notesForSection(notes, "outreach").map((note) => note.title), ["Outreach: First", "Outreach: Day 12"]);
   assert.equal(notesForSection(notes, "audit").length, 1);
   assert.equal(noteSectionKind({ activity_type: "note", title: "Audit: From the title", data: null }), "audit");
+});
+
+test("outreach draft drops the Outreach prefix and keeps the markdown body", () => {
+  assert.deepEqual(
+    outreachDraft({ title: "Outreach: First note", body: "Hello there.\n\nA sample." }),
+    { subject: "First note", body: "Hello there.\n\nA sample." }
+  );
+  assert.equal(outreachDraft(null), null);
 });

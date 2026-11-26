@@ -85,7 +85,7 @@ in `custom` so a replay produces stable state.
 
 | Endpoint | What it does |
 |---|---|
-| `POST /api/crm/capture` | Trusted lead intake: upsert by email, activities, triggers. Body: `{email, name?, phone?, company?, source?, page?, form?, message?, tags?, interested_offers?, custom?, workflow_id?}`. `interested_offers` accepts UUIDs only. Honeypot: include a `website` field to get silently dropped. Public website forms must pass through the frontend `/api/leads` allowlist rather than exposing this trusted payload surface. |
+| `POST /api/crm/capture` | Trusted lead intake: upsert by email, activities, triggers. Body: `{email, name?, phone?, company?, source?, page?, form?, message?, tags?, interested_offers?, custom?}`. `workflow_id` is ignored. `interested_offers` accepts UUIDs only. Honeypot: include a `website` field to get silently dropped. Each capture key is limited to 30 calls per 15 minutes, and each IP to 60. Public website forms must pass through the frontend `/api/leads` allowlist rather than exposing this trusted payload surface. |
 | `GET/POST /api/crm/leads`, `GET/PATCH/DELETE /api/crm/leads/:id` | CRUD + search (`?q=&status=&tag=&page=`). PATCH diffs fire tag/status triggers. DELETE is the GDPR hard-delete. |
 | `POST /api/crm/leads/:id/notes` · `POST /api/crm/leads/:id/enroll` | Timeline note · enroll into a workflow. |
 | `POST /api/crm/leads/import` | Bulk upsert (≤500 rows/call). `fire_triggers` defaults FALSE so imports don't get welcome emails. |
@@ -171,12 +171,59 @@ session, so distinct sessions per `screen_index` = the drop-off table shown at
      then `wrangler secret put RESEND_API_KEY --name digital-home-backend`.
    - Add the Resend webhook → `https://<backend>/api/crm/webhooks/resend`,
      then `wrangler secret put RESEND_WEBHOOK_SECRET --name digital-home-backend`.
+   - Turn on inbound for replies (below).
    - Flip off safe mode in `/crm/settings` once a test send looks right.
+     While safe mode is on, or while `RESEND_API_KEY` is missing, Setup and the
+     lead composer say so, and the send is only logged.
 6. **GHL migration:** export contacts → CSV import at `/crm/leads`
    (leave "fire triggers" OFF). During transition, point a GHL workflow
    webhook at `POST /api/crm/capture` with header `x-capture-key` so new GHL
    leads mirror into the CRM. Appointments booked in the GHL calendar can be
    posted to the capture endpoint too (they land on the lead timeline).
+
+## Unsubscribe
+
+The studio site does not serve `/unsubscribe` (it 404s on both the frontend
+worker and chadjordan.studio). This backend hosts it, because the token lookup
+and the suppression write already live here and do not need a frontend deploy.
+
+- The footer link is `BACKEND_PUBLIC_URL/unsubscribe?t=<token>` (a confirmation
+  page, so a scanner that only GETs the link does not unsubscribe anyone).
+- `List-Unsubscribe` points at `BACKEND_PUBLIC_URL/api/unsubscribe?t=<token>`.
+  Mail clients POST `List-Unsubscribe=One-Click` there.
+- `BACKEND_PUBLIC_URL` is set in `wrangler.jsonc`. It defaults to the
+  workers.dev backend host.
+
+## Replies (Resend inbound)
+
+Replies show on the lead timeline only after inbound mail is connected.
+Use the sending subdomain, never the root domain.
+
+1. In Resend, enable receiving on a subdomain such as `reply.chadjordan.studio`
+   (or the subdomain you already send from, if that is what Resend shows).
+2. Add only the MX record Resend gives you for that subdomain.
+3. Resend → Webhooks → add `https://chadjordan-backend.chad-1a0.workers.dev/api/crm/webhooks/resend`
+   for `email.received` plus the delivery events (delivered, opened, clicked,
+   bounced, complained).
+4. `wrangler secret put RESEND_WEBHOOK_SECRET` with the `whsec_` value.
+   The route returns 501 until that secret exists, and it checks the Svix signature.
+5. Send yourself a lead email, reply to it, and confirm a "Reply received" line
+   on that lead. Matching is by the From address on the reply.
+
+## Backups and restore
+
+The CRM tables in Supabase are the client record. This repo does not turn on
+backups. In the Supabase dashboard, enable Point-in-Time Recovery on the
+project (Database → Backups). Daily backups on the current plan are the
+fallback if PITR is not on.
+
+To restore: Supabase → Database → Backups → pick the time → restore into this
+project, or into a new project if you want to read it first. Restoring
+replaces the database, including leads, notes, deals, and sends. Take a fresh
+backup before a restore drill. After a restore, sign in and open one lead you
+know, plus Setup, and confirm the capture key and sender addresses are still
+the ones you expect. Worker secrets (Resend, the API key, the service role)
+live in Cloudflare, not in the database backup.
 
 ## Conventions for this repo
 

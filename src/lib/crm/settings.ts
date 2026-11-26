@@ -1,10 +1,13 @@
 import type { AdminClient, CrmSettings, CrmSender, SendBudget, SendWindow } from "./types";
 
 const DEFAULT_SENDER: CrmSender = {
-  from_name: "Your Brand",
-  from_email: "you@yourdomain.com",
-  reply_to: "you@yourdomain.com",
+  from_name: "Chad Jordan Studio",
+  from_email: "hello@chadjordan.studio",
+  reply_to: "hello@chadjordan.studio",
+  alert_from_email: "alerts@chadjordan.studio",
 };
+
+export const ALERT_FROM_EMAIL = "alerts@chadjordan.studio";
 
 const DEFAULT_WINDOW: SendWindow = {
   enabled: false,

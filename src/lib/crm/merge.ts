@@ -1,4 +1,5 @@
 import type { Lead } from "./types";
+import { backendPublicOrigin, unsubscribeLinks } from "./unsubscribe";
 
 /**
  * Merge-tag rendering for emails and messages.
@@ -9,11 +10,12 @@ import type { Lead } from "./types";
 const TAG_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*(?:\|([^}]*))?\s*\}\}/g;
 
 export function unsubscribeUrl(lead: Pick<Lead, "unsubscribe_token">): string {
-  const base =
-    process.env.DIGITAL_HOME_URL ||
-    process.env.NEXT_PUBLIC_DIGITAL_HOME_URL ||
-    "https://www.yourdomain.com";
-  return `${base.replace(/\/$/, "")}/unsubscribe?t=${lead.unsubscribe_token}`;
+  return unsubscribeLinks(backendPublicOrigin(), lead.unsubscribe_token).page;
+}
+
+/** POST target for List-Unsubscribe one-click. Inbox scanners that only GET a link land on the page instead. */
+export function unsubscribeOneClickUrl(lead: Pick<Lead, "unsubscribe_token">): string {
+  return unsubscribeLinks(backendPublicOrigin(), lead.unsubscribe_token).oneClick;
 }
 
 export function mergeValues(lead: Lead, extra: Record<string, string> = {}): Record<string, string> {

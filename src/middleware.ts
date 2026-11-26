@@ -10,6 +10,7 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { sessionRole } from './lib/api/roles';
 import { socialPublishingEnabled, socialUnavailable } from './lib/social/feature';
 
 export async function middleware(request: NextRequest) {
@@ -17,7 +18,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const unavailable = socialUnavailable(pathname, socialPublishingEnabled(process.env.SOCIAL_PUBLISHING_ENABLED));
   if (unavailable) return unavailable;
-  if (pathname === '/login' || pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/api')) {
+  if (
+    pathname === '/login' ||
+    pathname === '/unsubscribe' ||
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/favicon') ||
+    pathname.startsWith('/api')
+  ) {
     return NextResponse.next();
   }
 
@@ -50,10 +57,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // The 'social' role (social media manager) lives inside /social only.
-  // The /api boundary is enforced separately in lib/api/auth.ts — non-social
-  // API routes reject social-role sessions by default.
-  const role = (user.app_metadata as { role?: string } | null)?.role;
+  // 'admin' uses the whole dashboard. 'social' stays inside /social.
+  // A missing or unknown role is rejected. API routes check the same rule
+  // in lib/api/auth.ts.
+  const role = sessionRole(user.app_metadata);
+  if (!role) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('error', 'role');
+    return NextResponse.redirect(loginUrl);
+  }
   if (role === 'social' && pathname !== '/social' && !pathname.startsWith('/social/')) {
     return NextResponse.redirect(new URL('/social', request.url));
   }

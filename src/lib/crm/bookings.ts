@@ -95,7 +95,7 @@ function extractNotes(payload: CalBookingPayload): string | null {
  */
 async function bookingStageName(supabase: AdminClient): Promise<string | undefined> {
   const { data: stages } = await supabase.from("pipeline_stages").select("name").order("position");
-  return stages?.find((s) => /book|call|meeting|demo|discovery/i.test(s.name))?.name;
+  return stages?.find((s) => /book|call|meeting|demo|discovery|conversation|strategy/i.test(s.name))?.name;
 }
 
 export async function processCalcomEvent(

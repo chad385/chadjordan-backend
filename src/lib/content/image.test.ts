@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { composeSubject, pickFraming, repeatReason } from "./image.ts";
+import { composeSubject, imageRenderQuality, pickFraming, repeatReason } from "./image.ts";
 
 // Real subjects the engine produced on 2026-10-24.
 const LAMP_NOTEBOOK =
@@ -8,6 +8,14 @@ const LAMP_NOTEBOOK =
 const MICROPHONE =
   "Stills archive of a desk microphone left on in a dim room, its small indicator light glowing warm amber against cold navy shadows, a notepad closed beside it";
 const BINDERS = "Stills archive of a shelf of identical binders in a dim office corner, one lamp on nearby";
+
+test("image quality defaults to medium and stays configurable", () => {
+  assert.equal(imageRenderQuality("gpt-image-2", ""), "medium");
+  assert.equal(imageRenderQuality("gpt-image-2", "high"), "high");
+  assert.equal(imageRenderQuality("gpt-image-2", "nope"), "medium");
+  assert.equal(imageRenderQuality("dall-e-3", "medium"), "standard");
+  assert.equal(imageRenderQuality("dall-e-3", "hd"), "hd");
+});
 
 test("flags the desk-and-lamp cliché even with no history", () => {
   assert.match(repeatReason(LAMP_NOTEBOOK, []) ?? "", /cliché/);

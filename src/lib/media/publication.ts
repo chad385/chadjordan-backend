@@ -7,7 +7,7 @@ export async function verifyPublicationImage(supabase: AdminClient, url: string 
   const { data, error } = await supabase.from("brand_context").select("content")
     .eq("category", "content").eq("key", "article_image_mode").maybeSingle();
   if (error) throw new Error("Could not verify the saved image preference");
-  const mode = data?.content?.trim();
+  const mode = data?.content?.trim() || "text_only";
   if (mode !== "automatic" && mode !== "text_only") throw new Error("Record the article imagery preference before publishing");
   if (!url) {
     if (mode === "automatic") throw new Error("This article needs an image. Repair its existing draft before publishing, or explicitly choose text-only mode.");

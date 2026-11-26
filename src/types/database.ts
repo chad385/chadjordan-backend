@@ -2370,6 +2370,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      capture_rate_events: {
+        Row: {
+          id: string;
+          key_fingerprint: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          key_fingerprint: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          key_fingerprint?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       funnel_events: {
         Row: {
           id: string;

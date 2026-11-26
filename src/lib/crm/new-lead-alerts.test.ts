@@ -158,6 +158,13 @@ test("email names the person, page and tags", () => {
   const { subject, body } = newLeadEmail(lead("z", "2026-10-26T15:01:00Z", { first_name: "Sam", last_name: "Lee" }));
   assert.equal(subject, "New lead: Sam Lee");
   assert.match(body, /Sam Lee \(z@example\.com\)/);
+  assert.match(body, /just came in through your site/);
   assert.match(body, /Page: \/contact/);
   assert.match(body, /compound-inquiry/);
+});
+
+test("assistant-added leads are described as assistant leads", () => {
+  const { body } = newLeadEmail(lead("bot", "2026-10-26T15:01:00Z", { source: "assistant", capture_page: null, first_name: "Ada" }));
+  assert.match(body, /was added by the assistant/);
+  assert.doesNotMatch(body, /through your site/);
 });

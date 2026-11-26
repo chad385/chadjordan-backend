@@ -8,13 +8,15 @@
  * Auth: x-capture-key header (crm_capture_key setting) or standard API auth.
  * Body: { email, name?, first_name?, last_name?, phone?, company?,
  *         source?, page?, form?, message?, tags?: string[],
- *         interested_offers?: string[], custom?: {}, workflow_id? }
+ *         interested_offers?: string[], custom?: {} }
+ * workflow_id is ignored. Enrollment stays on the lead page and the workflow routes.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { authenticateCapture } from "@/lib/crm/capture-auth";
+import { captureBuckets, enforceCaptureRate } from "@/lib/crm/capture-rate";
 import { isValidEmail, upsertLead } from "@/lib/crm/leads";
-import { enrollLead, ensureLeadOpportunity } from "@/lib/crm/engine";
+import { ensureLeadOpportunity } from "@/lib/crm/engine";
 import { winEventBookingDeal } from "@/lib/crm/event-bookings";
 
 const CORS_HEADERS = {
@@ -33,6 +35,16 @@ export async function POST(request: NextRequest) {
   const auth = await authenticateCapture(request, supabase);
   if (!auth.ok) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: CORS_HEADERS });
+  }
+
+  const presentedKey = request.headers.get("x-capture-key") || `session:${auth.via}`;
+  const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const limited = await enforceCaptureRate(supabase, captureBuckets(presentedKey, ip));
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "Too many capture requests" },
+      { status: 429, headers: { ...CORS_HEADERS, "Retry-After": String(limited.retryAfterSeconds) } }
+    );
   }
 
   let body: Record<string, unknown>;
@@ -88,19 +100,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-file into the sales pipeline: a fresh inbound lead opens a deal in
-    // "New". Idempotent and forward-only. If upsertLead already enrolled them
-    // in a sequence via a tag trigger, that enroll hook has already put them in
-    // "Nurturing" — this call then no-ops. Never fail a capture over a pipeline write.
+    // "Researched". Idempotent and forward-only. If a tag trigger already
+    // enrolled them, that hook has put them in "Audit sent" and this no-ops.
     try {
-      await ensureLeadOpportunity(supabase, lead, { stage: "New", actor: `capture:${auth.via}` });
+      await ensureLeadOpportunity(supabase, lead, { stage: "Researched", actor: `capture:${auth.via}` });
     } catch (e) {
       console.error("capture: ensureLeadOpportunity failed", e);
-    }
-
-    // Optional direct enrollment into a specific workflow
-    if (typeof body.workflow_id === "string" && body.workflow_id) {
-      const { data: wf } = await supabase.from("workflows").select("*").eq("id", body.workflow_id).single();
-      if (wf && wf.status === "active") await enrollLead(supabase, wf, lead, "capture");
     }
 
     return NextResponse.json({ ok: true, lead_id: lead.id, created }, { headers: CORS_HEADERS });

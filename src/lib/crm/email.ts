@@ -1,7 +1,7 @@
-import { renderMergeTags, unsubscribeUrl } from "./merge";
+import { renderMergeTags, unsubscribeOneClickUrl, unsubscribeUrl } from "./merge";
 import { renderEmailHtml } from "./markdown";
 import { logActivity } from "./activity";
-import { getCrmSettings } from "./settings";
+import { ALERT_FROM_EMAIL, getCrmSettings } from "./settings";
 import type { AdminClient, CrmSettings, Lead } from "./types";
 
 export interface SendEmailInput {
@@ -67,6 +67,7 @@ export async function sendCrmEmail(
   const subject = renderMergeTags(input.subject, lead);
   const bodyMd = renderMergeTags(input.bodyMd, lead);
   const unsub = unsubscribeUrl(lead);
+  const oneClick = unsubscribeOneClickUrl(lead);
   const html = renderEmailHtml({
     bodyMd,
     preheader: input.preheader ? renderMergeTags(input.preheader, lead) : null,
@@ -107,7 +108,7 @@ export async function sendCrmEmail(
         html,
         reply_to: cfg.sender.reply_to || cfg.sender.from_email,
         headers: {
-          "List-Unsubscribe": `<${unsub}>`,
+          "List-Unsubscribe": `<${oneClick}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
       }),
@@ -168,6 +169,7 @@ export async function notifyOwner(
     if (!apiKey) return { sent: false, error: "RESEND_API_KEY not configured" };
     const cfg = await getCrmSettings(supabase);
     const owner = cfg.sender.reply_to || cfg.sender.from_email;
+    const alertFrom = cfg.sender.alert_from_email || ALERT_FROM_EMAIL;
     const html = renderEmailHtml({
       bodyMd,
       preheader: null,
@@ -178,7 +180,7 @@ export async function notifyOwner(
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: `${cfg.sender.from_name} <${cfg.sender.from_email}>`,
+        from: `${cfg.sender.from_name} <${alertFrom}>`,
         to: [owner],
         subject,
         html,

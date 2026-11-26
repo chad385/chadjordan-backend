@@ -505,12 +505,12 @@ where not exists (select 1 from pipelines);
 insert into pipeline_stages (pipeline_id, name, position)
 select p.id, s.name, s.pos
 from pipelines p,
-     (values ('New', 0), ('Nurturing', 1), ('Call Booked', 2), ('Proposal', 3), ('Negotiation', 4)) as s(name, pos)
+     (values ('Researched', 0), ('Audit sent', 1), ('In conversation', 2), ('Strategy session', 3), ('Won', 4)) as s(name, pos)
 where p.is_default
   and not exists (select 1 from pipeline_stages where pipeline_id = p.id);
 
 insert into backend_settings (key, value) values
   ('crm_safe_mode', 'true'::jsonb),
-  ('crm_sender', '{"from_name": "Your Brand", "from_email": "you@yourdomain.com", "reply_to": "you@yourdomain.com"}'::jsonb),
+  ('crm_sender', '{"from_name": "Chad Jordan Studio", "from_email": "hello@chadjordan.studio", "reply_to": "hello@chadjordan.studio", "alert_from_email": "alerts@chadjordan.studio"}'::jsonb),
   ('crm_send_window', '{"enabled": false, "start_hour": 8, "end_hour": 18, "timezone": "UTC", "days": [1,2,3,4,5]}'::jsonb)
 on conflict (key) do nothing;
