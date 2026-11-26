@@ -92,14 +92,48 @@ async function callSigned(
   );
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** The tick route emails on its own 500. This covers a cron call that never got a response. One mail per 6 hours. */
+async function alertCronInvocationFailure(env: CloudflareEnv, message: string): Promise<void> {
+  try {
+    const cacheKey = new Request("https://crm-tick-alert.internal/invocation");
+    if (await caches.default.match(cacheKey)) return;
+    await caches.default.put(cacheKey, new Response("1", { headers: { "Cache-Control": "max-age=21600" } }));
+    const apiKey = (env as unknown as Record<string, string>).RESEND_API_KEY;
+    if (!apiKey) {
+      console.error(`crm tick cron failure (resend unset): ${message}`);
+      return;
+    }
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "Chad Jordan Studio <alerts@chadjordan.studio>",
+        to: ["hello@chadjordan.studio"],
+        subject: "CRM engine tick failed",
+        html: `<p>The CRM cron could not finish a tick.</p><pre>${escapeHtml(message.slice(0, 500))}</pre><p>This alert is limited to one email every 6 hours.</p>`,
+      }),
+    });
+  } catch (e) {
+    console.error(`crm tick cron alert failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
 async function runTick(env: CloudflareEnv, ctx: ExecutionContext): Promise<void> {
   try {
     const response = await callSigned(env, ctx, TICK_PATH, {});
     if (!response.ok) {
-      console.error(`crm tick cron: ${response.status} ${(await response.text()).slice(0, 300)}`);
+      const detail = `${response.status} ${(await response.text()).slice(0, 300)}`;
+      console.error(`crm tick cron: ${detail}`);
+      if (response.status !== 500) await alertCronInvocationFailure(env, detail);
     }
   } catch (e) {
-    console.error(`crm tick cron: ${e instanceof Error ? e.message : String(e)}`);
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`crm tick cron: ${message}`);
+    await alertCronInvocationFailure(env, message);
   }
 }
 

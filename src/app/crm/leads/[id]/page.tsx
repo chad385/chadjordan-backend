@@ -21,8 +21,9 @@ import {
   timeAgo,
   useToast,
 } from '@/components/crm/kit';
+import { deliveryWarning } from '@/lib/crm/delivery';
 import { renderNoteMarkdown } from '@/lib/crm/note-markdown';
-import { notesForSection } from '@/lib/crm/note-sections';
+import { notesForSection, outreachDraft } from '@/lib/crm/note-sections';
 
 type Lead = {
   id: string;
@@ -148,6 +149,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [tagInput, setTagInput] = useState('');
   const [showEnroll, setShowEnroll] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
+  const [showDeal, setShowDeal] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const [delivery, setDelivery] = useState<{ safeMode: boolean; resendConfigured: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewSend, setViewSend] = useState<SendView | null>(null);
   const [tlFilter, setTlFilter] = useState<'all' | 'emails' | 'notes' | 'system'>('all');
@@ -181,6 +185,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   useEffect(() => {
     load();
+    api<{ delivery?: { safe_mode: boolean; resend_configured: boolean } }>('/api/settings')
+      .then((res) =>
+        setDelivery({
+          safeMode: res.delivery?.safe_mode !== false,
+          resendConfigured: res.delivery?.resend_configured !== false,
+        })
+      )
+      .catch(() => setDelivery({ safeMode: true, resendConfigured: false }));
   }, [load]);
 
   const patch = async (updates: Record<string, unknown>, okMsg = 'Saved') => {
@@ -231,6 +243,29 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       show(e instanceof Error ? e.message : 'Upload failed', 'err');
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const remind = async (days: number) => {
+    if (!detail) return;
+    setReminding(true);
+    try {
+      const due = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+      await api('/api/crm/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: `Follow up with ${leadName(detail.lead)}`,
+          description: `Remind me in ${days} days`,
+          lead_id: id,
+          due_at: due,
+        }),
+      });
+      show(`Reminder set for ${days} days`);
+      load();
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'Could not create the reminder', 'err');
+    } finally {
+      setReminding(false);
     }
   };
 
@@ -423,6 +458,14 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               {openTasks.length > 1 ? ` · +${openTasks.length - 1} more` : ''}
             </Glance>
           )}
+        </div>
+        <div className="flex flex-wrap gap-2 pb-6">
+          <GhostBtn onClick={() => remind(5)} disabled={reminding}>
+            Remind me in 5 days
+          </GhostBtn>
+          <GhostBtn onClick={() => remind(12)} disabled={reminding}>
+            Remind me in 12 days
+          </GhostBtn>
         </div>
 
         <div className="grid lg:grid-cols-5 gap-10">
@@ -625,17 +668,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
               )}
 
-              <h3 className="text-[13px] font-semibold text-zinc-300 mt-6 mb-3">
-                Opportunities
-              </h3>
+              <div className="flex items-center justify-between mt-6 mb-3 gap-3">
+                <h3 className="text-[13px] font-semibold text-zinc-300">Opportunities</h3>
+                <GhostBtn onClick={() => setShowDeal(true)}>Open deal</GhostBtn>
+              </div>
               {detail.opportunities.length === 0 ? (
-                <p className="text-[13px] text-zinc-600">
-                  None —{' '}
-                  <Link href="/crm/pipeline" className="text-zinc-400 underline underline-offset-2">
-                    add them on the pipeline board
-                  </Link>
-                  .
-                </p>
+                <p className="text-[13px] text-zinc-600">No deal yet.</p>
               ) : (
                 detail.opportunities.map((o) => (
                   <p key={o.id} className="text-sm text-zinc-300">
@@ -840,9 +878,24 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           leadId={id}
           leadEmail={lead.email}
           emailStatus={lead.email_status}
+          outreach={outreachDraft(outreachNotes[outreachNotes.length - 1] || null)}
+          deliveryWarningText={delivery ? deliveryWarning(delivery) : null}
           onClose={() => setShowCompose(false)}
           onDone={(msg, ok) => {
             setShowCompose(false);
+            show(msg, ok ? 'ok' : 'err');
+            load();
+          }}
+        />
+      )}
+
+      {showDeal && (
+        <DealModal
+          leadId={id}
+          leadLabel={leadName(lead)}
+          onClose={() => setShowDeal(false)}
+          onDone={(msg, ok) => {
+            setShowDeal(false);
             show(msg, ok ? 'ok' : 'err');
             load();
           }}
@@ -921,18 +974,28 @@ function ComposeModal({
   leadId,
   leadEmail,
   emailStatus,
+  outreach,
+  deliveryWarningText,
   onClose,
   onDone,
 }: {
   leadId: string;
   leadEmail: string;
   emailStatus: string;
+  outreach: { subject: string; body: string } | null;
+  deliveryWarningText: string | null;
   onClose: () => void;
   onDone: (msg: string, ok: boolean) => void;
 }) {
   const [subject, setSubject] = useState('');
   const [bodyMd, setBodyMd] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const useOutreach = () => {
+    if (!outreach) return;
+    setSubject(outreach.subject);
+    setBodyMd(outreach.body);
+  };
 
   const send = async () => {
     setBusy(true);
@@ -945,12 +1008,12 @@ function ComposeModal({
       onDone(
         s === 'sent'
           ? `Email sent to ${leadEmail}`
-          : s === 'simulated'
-            ? 'Simulated (safe mode) — logged to the timeline, not delivered'
+          :         s === 'simulated'
+            ? 'Not delivered. Safe mode or a missing Resend key logged this as a simulation.'
             : s === 'suppressed'
               ? 'Suppressed — this lead is not emailable'
               : `Send ${s}`,
-        s === 'sent' || s === 'simulated'
+        s === 'sent'
       );
     } catch (e) {
       onDone(e instanceof Error ? e.message : 'Send failed', false);
@@ -962,6 +1025,11 @@ function ComposeModal({
   return (
     <Modal title={`Email ${leadEmail}`} onClose={onClose} wide>
       <div className="flex flex-col gap-4">
+        {deliveryWarningText && (
+          <p className="px-3 py-3 border-2 border-amber-400 bg-amber-500/15 rounded text-sm font-medium text-amber-100">
+            {deliveryWarningText}
+          </p>
+        )}
         {emailStatus !== 'subscribed' && (
           <p className="px-3 py-2 border border-amber-900/60 bg-amber-950/30 rounded text-[13px] text-amber-300">
             This lead is {emailStatus} — the engine will suppress this send.
@@ -979,6 +1047,9 @@ function ComposeModal({
           unsubscribe link.
         </p>
         <div className="flex justify-end gap-3">
+          <GhostBtn onClick={useOutreach} disabled={!outreach}>
+            Use outreach note
+          </GhostBtn>
           <GhostBtn onClick={onClose}>Cancel</GhostBtn>
           <PrimaryBtn onClick={send} disabled={busy || !subject.trim() || !bodyMd.trim()}>
             {busy ? 'Sending…' : 'Send'}
@@ -1012,6 +1083,83 @@ function InlineText({ value, onSave }: { value: string; onSave: (v: string) => v
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
     />
+  );
+}
+
+function DealModal({
+  leadId,
+  leadLabel,
+  onClose,
+  onDone,
+}: {
+  leadId: string;
+  leadLabel: string;
+  onClose: () => void;
+  onDone: (msg: string, ok: boolean) => void;
+}) {
+  const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
+  const [stageId, setStageId] = useState('');
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api<{ pipelines: { is_default: boolean; stages: { id: string; name: string; position: number }[] }[] }>(
+      '/api/crm/pipelines'
+    )
+      .then((res) => {
+        const pipeline = res.pipelines.find((item) => item.is_default) || res.pipelines[0];
+        const next = [...(pipeline?.stages || [])].sort((a, b) => a.position - b.position);
+        setStages(next);
+        if (next[0]) setStageId(next[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const open = async () => {
+    if (!stageId) return;
+    setBusy(true);
+    try {
+      const dollars = Number(value);
+      await api('/api/crm/opportunities', {
+        method: 'POST',
+        body: JSON.stringify({
+          lead_id: leadId,
+          stage_id: stageId,
+          name: leadLabel,
+          value_cents: Number.isFinite(dollars) && dollars > 0 ? Math.round(dollars * 100) : 0,
+        }),
+      });
+      onDone('Deal opened', true);
+    } catch (e) {
+      onDone(e instanceof Error ? e.message : 'Could not open the deal', false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Open deal" onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <Field label="Stage">
+          <Select value={stageId} onChange={(e) => setStageId(e.target.value)}>
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id}>
+                {stage.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Value" hint="Optional. Dollars.">
+          <TextInput value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" placeholder="0" />
+        </Field>
+        <div className="flex justify-end gap-3">
+          <GhostBtn onClick={onClose}>Cancel</GhostBtn>
+          <PrimaryBtn onClick={open} disabled={busy || !stageId}>
+            {busy ? 'Opening…' : 'Open deal'}
+          </PrimaryBtn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -39,13 +39,17 @@ export function newLeadEmail(lead: AlertLead): { subject: string; body: string }
   const who = name ? `${name} (${lead.email})` : lead.email;
   const where = lead.capture_page || lead.source || "unknown";
   const tags = (lead.tags || []).filter(Boolean).join(", ") || "none";
+  const fromAssistant = (lead.source || "").trim().toLowerCase() === "assistant";
+  const arrival = fromAssistant
+    ? `**${who}** was added by the assistant.`
+    : `**${who}** just came in through your site.`;
   return {
     subject: `New lead: ${name || lead.email}`,
     body:
-      `**${who}** just came in through your site.\n\n` +
+      `${arrival}\n\n` +
       `Page: ${where} · Source: ${lead.source || "unknown"} · Tags: ${tags}\n\n` +
       `Received: ${lead.created_at}\n\n` +
-      `Reply to them directly, or open your Digital Home CRM to see the record.`,
+      `Reply to them directly, or open the CRM to see the record.`,
   };
 }
 

@@ -21,10 +21,23 @@ export async function GET(request: NextRequest) {
   const status = params.get("status");
   const tag = params.get("tag");
   const emailStatus = params.get("email_status");
+  const queue = params.get("queue");
   const sort = params.get("sort") || "created_at";
   const ascending = params.get("dir") === "asc";
 
   let query = supabase.from("leads").select("*", { count: "exact" });
+
+  if (queue === "approved_unsent") {
+    query = query.eq("review_status", "approved");
+    const { data: sentRows, error: sentError } = await supabase
+      .from("email_sends")
+      .select("lead_id")
+      .eq("status", "sent")
+      .limit(2000);
+    if (sentError) return NextResponse.json({ error: sentError.message }, { status: 500 });
+    const sentIds = [...new Set((sentRows || []).map((row) => row.lead_id).filter((id): id is string => Boolean(id)))];
+    if (sentIds.length > 0) query = query.not("id", "in", `(${sentIds.join(",")})`);
+  }
 
   if (q) {
     const term = q.replace(/[%,()]/g, "");

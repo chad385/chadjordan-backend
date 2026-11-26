@@ -1,13 +1,15 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { verifySignedRequest } from "@/lib/api/signature";
+import { fixedEqual, verifySignedRequest } from "@/lib/api/signature";
+import { sessionRole, type SessionRole } from "@/lib/api/roles";
+
+export type { SessionRole };
 
 /**
- * Session roles. 'admin' is the default (any user without an explicit role in
- * app_metadata). 'social' is the social media manager: full run of /social,
- * nothing else. API keys are unaffected.
+ * Session roles come only from app_metadata.role. 'admin' can use the whole
+ * dashboard. 'social' is limited to /social. Any other value, including a
+ * missing role, is rejected. Machine calls use the master API key only.
  */
-export type SessionRole = "admin" | "social";
 
 export type AuthResult =
   | { authenticated: true; mode: "session"; userId: string; role: SessionRole }
@@ -21,22 +23,9 @@ export interface AuthOptions {
 }
 
 function validateApiKey(key: string): AuthResult {
-  if (key === process.env.API_SECRET_KEY) {
+  const expected = process.env.API_SECRET_KEY;
+  if (expected && fixedEqual(expected, key)) {
     return { authenticated: true, mode: "api-key", agent: "master" };
-  }
-
-  const agentKeys: Record<string, string | undefined> = {
-    content_agent: process.env.CONTENT_AGENT_API_KEY,
-    seo_agent: process.env.SEO_AGENT_API_KEY,
-    analytics_agent: process.env.ANALYTICS_AGENT_API_KEY,
-    email_agent: process.env.EMAIL_AGENT_API_KEY,
-    openclawd: process.env.OPENCLAWD_API_KEY,
-  };
-
-  for (const [agent, agentKey] of Object.entries(agentKeys)) {
-    if (agentKey && key === agentKey) {
-      return { authenticated: true, mode: "api-key", agent };
-    }
   }
 
   return { authenticated: false, error: "Invalid API key" };
@@ -83,11 +72,19 @@ async function validateSession(opts: AuthOptions = {}): Promise<AuthResult> {
       return { authenticated: false, error: "Not authenticated" };
     }
 
-    const role: SessionRole =
-      (user.app_metadata as { role?: string } | null)?.role === "social" ? "social" : "admin";
+    const role = sessionRole(user.app_metadata);
+    if (!role) {
+      return { authenticated: false, error: "This account does not have access" };
+    }
     const allowed = opts.allowRoles || ["admin"];
     if (!allowed.includes(role)) {
-      return { authenticated: false, error: "This account only has access to the social studio" };
+      return {
+        authenticated: false,
+        error:
+          role === "social"
+            ? "This account only has access to the social studio"
+            : "This account does not have access",
+      };
     }
 
     return { authenticated: true, mode: "session", userId: user.id, role };

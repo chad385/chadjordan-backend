@@ -34,6 +34,7 @@ type Lead = {
   score: number;
   last_activity_at: string;
   created_at: string;
+  review_status?: 'not_reviewed' | 'approved' | 'needs_changes';
 };
 
 const STATUSES = ['new', 'engaged', 'qualified', 'converted', 'lost'];
@@ -110,6 +111,7 @@ export default function LeadsPage() {
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [queue, setQueue] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [sort, setSort] = useState<SortMode>('created_at');
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
@@ -118,16 +120,18 @@ export default function LeadsPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(
-    async (opts?: { page?: number; q?: string; status?: string; tag?: string; sort?: SortMode }) => {
+    async (opts?: { page?: number; q?: string; status?: string; tag?: string; sort?: SortMode; queue?: string }) => {
       const p = opts?.page ?? page;
       const qq = opts?.q ?? q;
       const st = opts?.status ?? status;
       const tg = opts?.tag ?? tagFilter;
       const so = opts?.sort ?? sort;
+      const qu = opts?.queue ?? queue;
       const params = new URLSearchParams({ page: String(p), limit: '25', sort: so, dir: 'desc' });
       if (qq) params.set('q', qq);
       if (st) params.set('status', st);
       if (tg) params.set('tag', tg);
+      if (qu) params.set('queue', qu);
       try {
         const res = await api<{ data: Lead[]; total: number }>(`/api/crm/leads?${params}`);
         setLeads(res.data);
@@ -137,7 +141,7 @@ export default function LeadsPage() {
         setLeads([]);
       }
     },
-    [page, q, status, tagFilter, sort, show]
+    [page, q, status, tagFilter, sort, queue, show]
   );
 
   useEffect(() => {
@@ -188,6 +192,20 @@ export default function LeadsPage() {
             ))}
           </Select>
         </div>
+        <div className="w-56">
+          <Select
+            value={queue}
+            aria-label="Lead queue"
+            onChange={(e) => {
+              setQueue(e.target.value);
+              setPage(1);
+              load({ page: 1, queue: e.target.value });
+            }}
+          >
+            <option value="">All leads</option>
+            <option value="approved_unsent">Approved, not yet sent</option>
+          </Select>
+        </div>
         <div className="w-40">
           <Select
             value={status}
@@ -230,8 +248,12 @@ export default function LeadsPage() {
           <Loading />
         ) : leads.length === 0 ? (
           <EmptyState
-            title="No leads yet"
-            hint="Leads flow in from your site forms and the capture API — or add one manually / import your GHL export."
+            title={queue === 'approved_unsent' ? 'Nothing waiting to send' : 'No leads yet'}
+            hint={
+              queue === 'approved_unsent'
+                ? 'Approved leads with no delivered email show up here.'
+                : 'Leads flow in from your site forms and the capture API — or add one manually / import a CSV.'
+            }
           />
         ) : (
           <div className="border border-minimal-border rounded-lg overflow-hidden">

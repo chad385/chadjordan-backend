@@ -207,6 +207,17 @@ export function describeOpenAIError(err: unknown): string {
   return org ? `${message} (OpenAI org: ${org})` : message;
 }
 
+/** GPT image models accept low, medium, and high. The default is medium. DALL-E maps that to standard, and "hd" stays hd. */
+export function imageRenderQuality(
+  model: string,
+  configured: string | undefined = process.env.OPENAI_IMAGE_QUALITY
+): "hd" | "standard" | "high" | "medium" | "low" {
+  const raw = (configured || "medium").trim().toLowerCase();
+  if (model.startsWith("dall-e")) return raw === "hd" ? "hd" : "standard";
+  if (raw === "low" || raw === "medium" || raw === "high") return raw;
+  return "medium";
+}
+
 /**
  * Calls the image model and returns the image bytes (PNG by default; "webp"
  * asks GPT image models for a smaller WebP, as the 2.9.0 media path expects).
@@ -224,7 +235,7 @@ export async function renderImage(
     prompt,
     n: 1,
     size: isDalle ? "1792x1024" : "1536x1024",
-    quality: isDalle ? "hd" : "high",
+    quality: imageRenderQuality(model),
     ...(isDalle
       ? { response_format: "url" }
       : format === "webp"

@@ -139,8 +139,8 @@ async function loadBrandContext(): Promise<BrandContext> {
 
 
   const imageModeRow = rows.find((r) => r.category === "content" && r.key === "article_image_mode");
-  const imageMode = imageModeRow?.content?.trim();
-  if (imageMode !== "automatic" && imageMode !== "text_only") throw new Error("Article imagery preference is not configured. Simon must record automatic or text_only before writing.");
+  const imageMode = imageModeRow?.content?.trim() || "text_only";
+  if (imageMode !== "automatic" && imageMode !== "text_only") throw new Error("Article imagery preference must be automatic or text_only.");
   return { fullContext, ctaLinks, activeOffers, authorName, imageStyle, imageAvoid, imageCompositions, imageOpener, imageMode };
 }
 

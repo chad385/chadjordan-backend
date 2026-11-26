@@ -43,9 +43,12 @@ export interface SendWindow {
 
 export interface CrmSender {
   from_name: string;
+  /** Address on emails to leads. */
   from_email: string;
   reply_to?: string;
   address?: string; // physical address for the email footer (CAN-SPAM)
+  /** Address on owner alerts: new leads, tick failures, the daily heartbeat. */
+  alert_from_email?: string;
 }
 
 export interface SendBudget {
