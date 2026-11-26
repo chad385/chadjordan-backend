@@ -39,20 +39,22 @@ function jsonError(error: string, status: number, extra?: Record<string, unknown
 export async function handleAssistant(
   request: NextRequest,
   action: string,
-  run: (ctx: AssistantContext) => Promise<AssistantOutcome>
+  run: (ctx: AssistantContext) => Promise<AssistantOutcome>,
+  options?: { maxBodyBytes?: number }
 ): Promise<NextResponse> {
+  const maxBodyBytes = options?.maxBodyBytes ?? ASSISTANT_MAX_BODY_BYTES;
   const creds = readAssistantCredentials(process.env);
   if (!creds.ok) {
     return jsonError(assistantNotConfiguredMessage(creds.reason), 503);
   }
 
   const contentLength = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(contentLength) && contentLength > ASSISTANT_MAX_BODY_BYTES) {
+  if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
     return jsonError("Request body is too large", 413);
   }
 
   const bodyText = request.method === "GET" || request.method === "HEAD" ? "" : await request.text();
-  if (bodyText.length > ASSISTANT_MAX_BODY_BYTES) {
+  if (bodyText.length > maxBodyBytes) {
     return jsonError("Request body is too large", 413);
   }
 

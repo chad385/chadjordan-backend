@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { logActivity } from "@/lib/crm/activity";
 import { upsertLead } from "@/lib/crm/leads";
 import type { AssistantContext, AssistantOutcome } from "./handle";
+import { decodeBase64Image, leadIdFromImagesPath, safeImageFilename, sniffLeadImage } from "@/lib/crm/lead-images";
+import { storeLeadImage } from "@/lib/crm/lead-image-store";
 import { escapeIlike, listLeadMatches, pickLeadMatch, type LeadCandidate } from "./leads-match";
 import { leadIdFromNotesPath, parseResearchNote, researchActivity, type ResearchNote } from "./research-note";
 import { organizationalDomains, parseJsonObject, parseLeadRequest, parseLookupRequest, websiteHost } from "./validate";
@@ -144,6 +146,17 @@ export async function lookupAssistantLeads(ctx: AssistantContext): Promise<Assis
     return fail(500, error instanceof Error ? error.message : "Lead lookup failed");
   }
   const matches = listLeadMatches({ ...request.value, domains }, candidates).slice(0, 10);
+  const reviews = new Map<string, { review_status: string; review_comment: string | null }>();
+  if (matches.length > 0) {
+    const { data, error } = await ctx.supabase
+      .from("leads")
+      .select("id, review_status, review_comment")
+      .in("id", matches.map((match) => match.lead.id));
+    if (error) return fail(500, error.message);
+    for (const row of data || []) {
+      reviews.set(row.id, { review_status: row.review_status, review_comment: row.review_comment });
+    }
+  }
   return {
     response: NextResponse.json({
       exists: matches.length > 0,
@@ -152,6 +165,8 @@ export async function lookupAssistantLeads(ctx: AssistantContext): Promise<Assis
         email: match.lead.email,
         company: match.lead.company,
         matched_on: match.matched_on,
+        review_status: reviews.get(match.lead.id)?.review_status || "not_reviewed",
+        review_comment: reviews.get(match.lead.id)?.review_comment ?? null,
       })),
     }),
     metadata: { count: matches.length },
@@ -210,6 +225,53 @@ async function saveResearchNote(
   });
   if (!noteId) return { ok: false, error: "Research note was not saved" };
   return { ok: true, note: { note_id: noteId, title: activity.title, kind: note.kind } };
+}
+
+export async function addAssistantLeadImage(ctx: AssistantContext): Promise<AssistantOutcome> {
+  const leadId = leadIdFromImagesPath(new URL(ctx.requestUrl).pathname);
+  if (!leadId) return fail(404, "Lead not found");
+  const parsedJson = parseJsonObject(ctx.bodyText);
+  if (!parsedJson.ok) return fail(400, parsedJson.error);
+  const body = parsedJson.value;
+  const extra = Object.keys(body).filter((key) => !["data_base64", "filename"].includes(key));
+  if (extra.length > 0) return fail(400, `Unknown fields: ${extra.join(", ")}`);
+  if (typeof body.data_base64 !== "string") return fail(400, "data_base64 is required");
+  const bytes = decodeBase64Image(body.data_base64);
+  const contentType = bytes ? sniffLeadImage(bytes) : null;
+  if (!bytes || !contentType) return fail(400, "Upload a PNG, JPG, or WebP image up to 4 MB");
+
+  const { data: lead, error } = await ctx.supabase.from("leads").select("id").eq("id", leadId).maybeSingle();
+  if (error) return fail(500, error.message);
+  if (!lead) return fail(404, "Lead not found");
+
+  try {
+    const image = await storeLeadImage(ctx.supabase, {
+      leadId,
+      bytes,
+      filename: safeImageFilename(body.filename),
+      createdBy: "assistant",
+    });
+    return {
+      response: NextResponse.json(
+        {
+          image_id: image.id,
+          lead_id: leadId,
+          content_type: image.content_type,
+          byte_size: image.byte_size,
+          workflow_started: false,
+          deal_created: false,
+          email_sent: false,
+        },
+        { status: 201 }
+      ),
+      targetTable: "lead_images",
+      targetId: image.id,
+      metadata: { lead_id: leadId, byte_size: image.byte_size, content_type: image.content_type },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Image upload failed";
+    return fail(/not ready|bucket/i.test(message) ? 503 : 400, message);
+  }
 }
 
 function fail(status: number, error: string): AssistantOutcome {
