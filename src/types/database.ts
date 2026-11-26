@@ -786,6 +786,9 @@ export type Database = {
           email_status: "subscribed" | "unsubscribed" | "bounced" | "complained";
           unsubscribe_token: string;
           timezone: string | null;
+          review_status: "not_reviewed" | "approved" | "needs_changes";
+          review_comment: string | null;
+          reviewed_at: string | null;
           last_activity_at: string;
           created_at: string;
           updated_at: string;
@@ -808,6 +811,9 @@ export type Database = {
           email_status?: "subscribed" | "unsubscribed" | "bounced" | "complained";
           unsubscribe_token?: string;
           timezone?: string | null;
+          review_status?: "not_reviewed" | "approved" | "needs_changes";
+          review_comment?: string | null;
+          reviewed_at?: string | null;
           last_activity_at?: string;
           created_at?: string;
           updated_at?: string;
@@ -830,9 +836,45 @@ export type Database = {
           email_status?: "subscribed" | "unsubscribed" | "bounced" | "complained";
           unsubscribe_token?: string;
           timezone?: string | null;
+          review_status?: "not_reviewed" | "approved" | "needs_changes";
+          review_comment?: string | null;
+          reviewed_at?: string | null;
           last_activity_at?: string;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      lead_images: {
+        Row: {
+          id: string;
+          lead_id: string;
+          storage_key: string;
+          content_type: string;
+          byte_size: number;
+          filename: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          lead_id: string;
+          storage_key: string;
+          content_type: string;
+          byte_size: number;
+          filename?: string | null;
+          created_by?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          lead_id?: string;
+          storage_key?: string;
+          content_type?: string;
+          byte_size?: number;
+          filename?: string | null;
+          created_by?: string;
+          created_at?: string;
         };
         Relationships: [];
       };

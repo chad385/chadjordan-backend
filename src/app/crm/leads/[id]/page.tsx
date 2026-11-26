@@ -21,6 +21,8 @@ import {
   timeAgo,
   useToast,
 } from '@/components/crm/kit';
+import { renderNoteMarkdown } from '@/lib/crm/note-markdown';
+import { notesForSection } from '@/lib/crm/note-sections';
 
 type Lead = {
   id: string;
@@ -38,6 +40,18 @@ type Lead = {
   custom: Record<string, unknown>;
   created_at: string;
   last_activity_at: string;
+  review_status?: 'not_reviewed' | 'approved' | 'needs_changes';
+  review_comment?: string | null;
+  reviewed_at?: string | null;
+};
+
+type LeadImage = {
+  id: string;
+  content_type: string;
+  byte_size: number;
+  filename: string | null;
+  created_by: string;
+  created_at: string;
 };
 
 type Activity = {
@@ -137,6 +151,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [viewSend, setViewSend] = useState<SendView | null>(null);
   const [tlFilter, setTlFilter] = useState<'all' | 'emails' | 'notes' | 'system'>('all');
+  const [reviewComment, setReviewComment] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [images, setImages] = useState<LeadImage[]>([]);
+  const [viewImage, setViewImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const openSend = async (sendId: string) => {
     try {
@@ -149,7 +168,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   const load = useCallback(async () => {
     try {
-      setDetail(await api<Detail>(`/api/crm/leads/${id}`));
+      const next = await api<Detail>(`/api/crm/leads/${id}`);
+      setDetail(next);
+      setReviewComment(next.lead.review_comment || '');
+      const imageRes = await fetch(`/api/crm/leads/${id}/images`);
+      const imageData = (await imageRes.json().catch(() => ({ images: [] }))) as { images?: LeadImage[] };
+      setImages(imageRes.ok ? imageData.images || [] : []);
     } catch (e) {
       show(e instanceof Error ? e.message : 'Failed to load lead', 'err');
     }
@@ -171,6 +195,42 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       setTimeout(load, 400);
     } catch (e) {
       show(e instanceof Error ? e.message : 'Save failed', 'err');
+    }
+  };
+
+  const saveReview = async (status: 'approved' | 'needs_changes') => {
+    setSavingReview(true);
+    try {
+      const res = await api<{ lead: Lead }>(`/api/crm/leads/${id}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ status, comment: reviewComment }),
+      });
+      setDetail((d) => (d ? { ...d, lead: res.lead } : d));
+      show(status === 'approved' ? 'Approved. No email was sent.' : 'Marked as needs changes.');
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'Review was not saved', 'err');
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
+  const uploadImage = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(`/api/crm/leads/${id}/images`, { method: 'POST', body });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      show('Image added');
+      const imageRes = await fetch(`/api/crm/leads/${id}/images`);
+      const imageData = (await imageRes.json().catch(() => ({ images: [] }))) as { images?: LeadImage[] };
+      setImages(imageData.images || []);
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'Upload failed', 'err');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -254,6 +314,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     if (last && last.day === day) last.items.push(item);
     else timelineDays.push({ day, items: [item] });
   }
+  const auditNotes = notesForSection(detail.activities, 'audit');
+  const outreachNotes = notesForSection(detail.activities, 'outreach');
 
   return (
     <div className="flex flex-col h-full">
@@ -268,6 +330,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="flex items-center gap-3">
           <GhostBtn onClick={() => setShowCompose(true)}>Send email</GhostBtn>
+          <PrimaryBtn onClick={() => saveReview('approved')} disabled={savingReview}>Approve</PrimaryBtn>
+          <GhostBtn onClick={() => saveReview('needs_changes')} disabled={savingReview}>Request changes</GhostBtn>
           <GhostBtn onClick={() => setShowEnroll(true)}>Enroll in workflow</GhostBtn>
           <GhostBtn danger onClick={() => setConfirmDelete(true)}>
             Delete
@@ -276,6 +340,68 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       </header>
 
       <div className="flex-1 overflow-y-auto px-12 pb-12">
+        <section className="mb-6 border border-minimal-border rounded-lg p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Review</p>
+              <p className="text-sm text-white mt-1">
+                {lead.review_status === 'approved'
+                  ? 'Approved'
+                  : lead.review_status === 'needs_changes'
+                    ? 'Needs changes'
+                    : 'Not reviewed'}
+              </p>
+            </div>
+            <p className="text-xs text-zinc-500">Approving does not send email or start a workflow.</p>
+          </div>
+          <TextArea
+            rows={2}
+            className="mt-3"
+            value={reviewComment}
+            onChange={(e) => setReviewComment(e.target.value)}
+            placeholder="Optional comment for the assistant"
+          />
+        </section>
+        <section className="mb-8">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-[13px] font-semibold text-zinc-300">Stills</h2>
+            <label className="text-xs text-zinc-400 hover:text-white cursor-pointer">
+              {uploadingImage ? 'Uploading…' : 'Upload image'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                disabled={uploadingImage}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  uploadImage(file);
+                }}
+              />
+            </label>
+          </div>
+          {images.length === 0 ? (
+            <p className="text-[13px] text-zinc-600">No stills yet. PNG, JPG, or WebP, up to 4 MB.</p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {images.map((image) => (
+                <button
+                  key={image.id}
+                  type="button"
+                  onClick={() => setViewImage(image.id)}
+                  className="w-24 h-24 rounded border border-minimal-border overflow-hidden bg-black"
+                  title={image.filename || 'Lead image'}
+                >
+                  <img
+                    src={`/api/crm/leads/${id}/images/${image.id}`}
+                    alt={image.filename || 'Lead still'}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
         {/* At-a-glance strip: who is this and what's next, before any scrolling. */}
         <div className="flex flex-wrap items-center gap-x-7 gap-y-2 pb-6 text-[13px]">
           <Glance label="Score">{lead.score}</Glance>
@@ -550,6 +676,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
           {/* Right: timeline */}
           <div className="lg:col-span-3">
+            <NoteGroup title="Audit" notes={auditNotes} empty="No audit yet." />
+            <NoteGroup title="Outreach" notes={outreachNotes} empty="No outreach yet." />
             <div className="flex gap-2 mb-4">
               {(['all', 'emails', 'notes', 'system'] as const).map((f) => (
                 <button
@@ -666,6 +794,16 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
+      {viewImage && (
+        <Modal title="Still" onClose={() => setViewImage(null)} wide>
+          <img
+            src={`/api/crm/leads/${id}/images/${viewImage}`}
+            alt="Lead still"
+            className="w-full max-h-[70vh] object-contain bg-black rounded"
+          />
+        </Modal>
+      )}
+
       {viewSend && (
         <Modal title={viewSend.subject} onClose={() => setViewSend(null)} wide>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 mb-4">
@@ -738,6 +876,35 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         </Modal>
       )}
     </div>
+  );
+}
+
+function NoteGroup({ title, notes, empty }: { title: string; notes: Activity[]; empty: string }) {
+  return (
+    <section className="mb-8">
+      <h2 className="text-[13px] font-semibold text-zinc-300 mb-3">{title}</h2>
+      {notes.length === 0 ? (
+        <p className="text-[13px] text-zinc-600">{empty}</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {notes.map((item) => (
+            <article key={item.id} className="border border-minimal-border rounded-lg p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="text-sm text-white">{item.title}</h3>
+                <span className="text-xs text-zinc-600 shrink-0">{timeAgo(item.created_at)}</span>
+              </div>
+              {item.body && (
+                <div
+                  className="mt-3 text-[13px] text-zinc-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:underline [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-medium [&_pre]:overflow-x-auto [&_code]:text-xs"
+                  dangerouslySetInnerHTML={{ __html: renderNoteMarkdown(item.body) }}
+                />
+              )}
+              <p className="text-xs text-zinc-500 mt-2">{item.actor}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

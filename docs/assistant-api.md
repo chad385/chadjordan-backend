@@ -221,11 +221,44 @@ Response `200`:
       "id": "uuid",
       "email": "ada@northledger.example",
       "company": "North Ledger",
-      "matched_on": "email"
+      "matched_on": "email",
+      "review_status": "not_reviewed",
+      "review_comment": null
     }
   ]
 }
 ```
+
+`review_status` is `not_reviewed`, `approved`, or `needs_changes`. `review_comment` is Chad's optional note, or `null`.
+
+### `POST /api/assistant/leads/{id}/images`
+
+Attaches a still image to a lead. Same key, HMAC, audit row, and per-key rate limit as the notes route. The JSON body may be up to 6 MB so a 4 MB image fits after base64. PNG, JPG, and WebP only. The file is stored in the private `lead-stills` bucket and appears on the lead page. This call does not send email, start a workflow, or open a deal.
+
+Sign the path `/api/assistant/leads/{id}/images` and the JSON body.
+
+```json
+{
+  "filename": "sample.webp",
+  "data_base64": "<base64 of the image bytes>"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "image_id": "uuid",
+  "lead_id": "uuid",
+  "content_type": "image/webp",
+  "byte_size": 120000,
+  "workflow_started": false,
+  "deal_created": false,
+  "email_sent": false
+}
+```
+
+Unknown lead ids return **404**. A missing `lead-stills` bucket returns **503**.
 
 ## Signing example
 
